@@ -36,6 +36,7 @@ import io.confluent.connect.s3.storage.S3Storage;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -47,12 +48,19 @@ import java.util.concurrent.TimeUnit;
 
 import io.confluent.connect.s3.util.EmbeddedConnectUtils;
 import org.apache.commons.io.FileUtils;
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.ConsumerGroupListing;
+import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsOptions;
+import org.apache.kafka.clients.admin.ListConsumerGroupsOptions;
+import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -151,7 +159,6 @@ public class S3SinkConnectorIT extends BaseConnectorIT {
     testTombstoneRecordsWritten(JSON_EXTENSION, false);
   }
 
-
   public void testFilesWrittenToBucketAvroWithExtInTopic() throws Throwable {
     //add test specific props
     props.put(FORMAT_CLASS_CONFIG, AvroFormat.class.getName());
@@ -161,7 +168,7 @@ public class S3SinkConnectorIT extends BaseConnectorIT {
   @Test
   public void testFilesWrittenToBucketParquetWithExtInTopic() throws Throwable {
     //add test specific props
-    props.put(FORMAT_CLASS_CONFIG, ParquetFormat.class.getName());
+        props.put(FORMAT_CLASS_CONFIG, ParquetFormat.class.getName());
     testBasicRecordsWritten(PARQUET_EXTENSION, true);
   }
 
