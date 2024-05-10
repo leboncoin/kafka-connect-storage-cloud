@@ -23,6 +23,8 @@ import static java.util.Objects.requireNonNull;
 import io.confluent.connect.s3.S3SinkConnectorConfig;
 import io.confluent.connect.storage.format.RecordWriter;
 import io.confluent.connect.storage.format.RecordWriterProvider;
+
+import java.util.Objects;
 import java.util.Optional;
 import javax.annotation.Nullable;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -99,6 +101,10 @@ public class KeyValueHeaderRecordWriterProvider
               String.format("Key cannot be null for SinkRecord: %s",
                   sinkRecordToLoggableString(sinkRecord))
           );
+        }
+        // If the value is null and tombstone writes are disabled, we should not write the record.
+        if (Objects.isNull(sinkRecord.value()) && !conf.isTombstoneWriteEnabled() && conf.commitOnNullValue()) {
+          return;
         }
 
         // headerWriter != null means writing headers is turned on
