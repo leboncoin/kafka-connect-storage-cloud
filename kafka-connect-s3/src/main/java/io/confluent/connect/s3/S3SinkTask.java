@@ -294,7 +294,7 @@ public class S3SinkTask extends SinkTask {
   private boolean maybeSkipOnNullValue(SinkRecord record) {
     if (record.value() == null) {
       if (connectorConfig.nullValueBehavior()
-          .equalsIgnoreCase(OutputWriteBehavior.IGNORE.toString())) {
+          .equalsIgnoreCase(OutputWriteBehavior.IGNORE.toString()) && !connectorConfig.commitOnNullValue()) {
         log.debug(
             "Null valued record from topic '{}', partition {} and offset {} was skipped.",
             record.topic(),
@@ -302,6 +302,15 @@ public class S3SinkTask extends SinkTask {
             record.kafkaOffset()
         );
         return true;
+      } else if (connectorConfig.nullValueBehavior()
+          .equalsIgnoreCase(OutputWriteBehavior.IGNORE.toString()) && connectorConfig.commitOnNullValue()) {
+        log.debug(
+            "Null valued record from topic '{}', partition {} and offset {} was skipped but added to buffer to commit kafka offset.",
+            record.topic(),
+            record.kafkaPartition(),
+            record.kafkaOffset()
+        );
+        return false;
       } else if (connectorConfig.nullValueBehavior()
           .equalsIgnoreCase(OutputWriteBehavior.WRITE.toString())) {
         log.debug(
@@ -335,7 +344,7 @@ public class S3SinkTask extends SinkTask {
     for (TopicPartition tp : topicPartitionWriters.keySet()) {
       Long offset = topicPartitionWriters.get(tp).getOffsetToCommitAndReset();
       if (offset != null) {
-        log.trace("Forwarding to framework request to commit offset: {} for {}", offset, tp);
+        log.info("Forwarding to framework request to commit offset: {} for {}", offset, tp);
         offsetsToCommit.put(tp, new OffsetAndMetadata(offset));
       }
     }
