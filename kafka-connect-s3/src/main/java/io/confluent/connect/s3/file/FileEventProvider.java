@@ -22,7 +22,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
-import java.io.IOException;
 
 public abstract class FileEventProvider implements Closeable {
   private static final Logger log = LoggerFactory.getLogger(FileEventProvider.class);
@@ -34,7 +33,7 @@ public abstract class FileEventProvider implements Closeable {
     this.skipError = skipError;
   }
 
-  public String formatDateRFC3339(DateTime timestamp){
+  public String formatDateRFC3339(DateTime timestamp) {
     DateTimeFormatter fmt = ISODateTimeFormat.dateTime();
     return fmt.print(timestamp);
   }
@@ -50,7 +49,8 @@ public abstract class FileEventProvider implements Closeable {
           DateTime eventDatetime) {
     try {
       log.info("Running file event : {}, {}", topicName, filePath);
-      callImpl(topicName, s3Partition, filePath, partition, baseRecordTimestamp, currentTimestamp, recordCount, eventDatetime);
+      callImpl(topicName, s3Partition, filePath, partition,
+          baseRecordTimestamp, currentTimestamp, recordCount, eventDatetime);
     } catch (Exception e) {
       if (skipError) {
         log.error(e.getMessage(), e);
@@ -59,6 +59,7 @@ public abstract class FileEventProvider implements Closeable {
       }
     }
   }
+
   public abstract void callImpl(
       String topicName,
       String s3Partition,

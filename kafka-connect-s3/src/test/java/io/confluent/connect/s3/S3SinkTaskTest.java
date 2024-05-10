@@ -35,6 +35,7 @@ import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.io.ByteArrayInputStream;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -143,6 +144,34 @@ public class S3SinkTaskTest extends DataWriterAvroTest {
         Collections.singleton(new TopicPartition(TOPIC, PARTITION))));
     verify(expectedSinkRecords, validOffsets);
     Mockito.verify(reporter, times(2)).report(any(), any(DataException.class));
+  }
+
+  @Test
+  public void testWriteExclusivelyNullRecords() throws Exception {
+    setUp();
+    replayAll();
+    task = new S3SinkTask();
+    SinkTaskContext mockContext = mock(SinkTaskContext.class);
+    ErrantRecordReporter reporter = mock(ErrantRecordReporter.class);
+    when(mockContext.errantRecordReporter()).thenReturn(reporter);
+    when(mockContext.assignment()).thenReturn(Collections.singleton(TOPIC_PARTITION));
+    task.initialize(mockContext);
+
+    properties.put(S3SinkConnectorConfig.BEHAVIOR_ON_NULL_VALUES_CONFIG,
+        S3SinkConnectorConfig.IgnoreOrFailBehavior.IGNORE.toString());
+    properties.put(S3SinkConnectorConfig.COMMIT_OFFSET_ON_NULL_VALUES_CONFIG, "true");
+
+    task.start(properties);
+    verifyAll();
+
+    List<SinkRecord> sinkRecords = new ArrayList<>();
+    sinkRecords.add(
+        new SinkRecord(TOPIC, PARTITION, null, null, Schema.OPTIONAL_STRING_SCHEMA, null,
+            0));
+    sinkRecords.add(new SinkRecord(TOPIC, PARTITION, null, null, Schema.OPTIONAL_STRING_SCHEMA, null, 1));
+    task.put(sinkRecords);
+    task.close(mockContext.assignment());
+    task.stop();
   }
 
   @Test
