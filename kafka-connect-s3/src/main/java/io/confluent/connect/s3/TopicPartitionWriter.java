@@ -41,6 +41,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 
@@ -190,8 +191,10 @@ public class TopicPartitionWriter {
 
     // Initialize scheduled rotation timer if applicable
     setNextScheduledRotation();
+
   }
-  public TopicPartitionWriter withFileEventProvider(Optional<FileEventProvider> fileEventProvider){
+
+  public TopicPartitionWriter withFileEventProvider(Optional<FileEventProvider> fileEventProvider) {
     this.fileCallback = fileEventProvider;
     return this;
   }
@@ -270,6 +273,7 @@ public class TopicPartitionWriter {
           currentValueSchema = valueSchema;
         }
 
+        log.info("Writing record for topic partition {} with encoded partition {}", tp, encodedPartition);
         if (!checkRotationOrAppend(
             record,
             currentValueSchema,
@@ -277,6 +281,7 @@ public class TopicPartitionWriter {
             encodedPartition,
             now
         )) {
+          log.info("Nothing to rotate");
           break;
         }
         // fallthrough
@@ -333,6 +338,9 @@ public class TopicPartitionWriter {
     boolean validRecord = writeRecord(projectedRecord, encodedPartition);
     buffer.poll();
     if (!validRecord) {
+      log.info(
+          "Record not valid"
+      );
       // skip the faulty record and don't rotate
       return false;
     }
@@ -348,7 +356,17 @@ public class TopicPartitionWriter {
       return true;
     }
 
+    if (rotateOnTombstonesBatch(record)) {
+      log.info("The current batch of record is full of tombstones. Committing kafka offset.");
+      nextState();
+      return true;
+    }
+
     return false;
+  }
+
+  private boolean rotateOnTombstonesBatch(SinkRecord record) {
+    return connectorConfig.commitOnNullValue() && Objects.isNull(record.value()) && buffer.stream().allMatch(Objects::isNull);
   }
 
   private void commitOnTimeIfNoData(long now) {
@@ -670,6 +688,11 @@ public class TopicPartitionWriter {
       return;
     }
 
+    if (connectorConfig.commitOnNullValue() && buffer.stream().allMatch(record -> record.value() == null)) {
+      log.warn("commitOnNullValues is enabled and only tombstones in buffer. Skipping batch.");
+      return;
+    }
+
     if (writers.containsKey(encodedPartition)) {
       RecordWriter writer = writers.get(encodedPartition);
       // Commits the file and closes the underlying output stream.
@@ -680,6 +703,11 @@ public class TopicPartitionWriter {
   }
 
   private void callbackFile(String encodedPartition) {
+    if (buffer.stream().allMatch(record -> record.value() == null)) {
+      log.warn("No file created, no need to send a callback.");
+      return;
+    }
+
     fileCallback.ifPresent(fs -> fs.call(tp.topic(), encodedPartition,
             commitFiles.get(encodedPartition), tp.partition(),
             new DateTime(baseRecordTimestamp).withZone(timeZone),

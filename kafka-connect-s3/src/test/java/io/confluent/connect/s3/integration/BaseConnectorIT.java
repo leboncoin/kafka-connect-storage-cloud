@@ -57,6 +57,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumReader;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.apache.kafka.connect.data.Field;
@@ -132,6 +133,8 @@ public abstract class BaseConnectorIT {
 
   protected static MinioContainer minioContainer;
 
+  protected Admin kafkaAdmin;
+
   @BeforeClass
   public static void setupClient() {
     log.info("Starting ITs...");
@@ -174,6 +177,8 @@ public abstract class BaseConnectorIT {
 
     // start the clusters
     connect.start();
+
+    kafkaAdmin = connect.kafka().createAdminClient();
   }
 
 
