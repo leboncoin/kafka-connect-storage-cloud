@@ -257,9 +257,6 @@ public class S3SinkTask extends SinkTask {
       TopicPartition tp = new TopicPartition(topic, partition);
 
       if (maybeSkipOnNullValue(record)) {
-        if (reporter != null) {
-          reporter.report(record, new DataException("Skipping null value record."));
-        }
         continue;
       }
       topicPartitionWriters.get(tp).buffer(record);
@@ -294,7 +291,7 @@ public class S3SinkTask extends SinkTask {
   private boolean maybeSkipOnNullValue(SinkRecord record) {
     if (record.value() == null) {
       if (connectorConfig.nullValueBehavior()
-          .equalsIgnoreCase(OutputWriteBehavior.IGNORE.toString())) {
+          .equalsIgnoreCase(OutputWriteBehavior.IGNORE.toString()) && !connectorConfig.commitOnNullValue()) {
         log.debug(
             "Null valued record from topic '{}', partition {} and offset {} was skipped.",
             record.topic(),
@@ -302,6 +299,15 @@ public class S3SinkTask extends SinkTask {
             record.kafkaOffset()
         );
         return true;
+      } else if (connectorConfig.nullValueBehavior()
+          .equalsIgnoreCase(OutputWriteBehavior.IGNORE.toString()) && connectorConfig.commitOnNullValue()) {
+        log.debug(
+            "Null valued record from topic '{}', partition {} and offset {} was skipped but added to buffer to commit kafka offset.",
+            record.topic(),
+            record.kafkaPartition(),
+            record.kafkaOffset()
+        );
+        return false;
       } else if (connectorConfig.nullValueBehavior()
           .equalsIgnoreCase(OutputWriteBehavior.WRITE.toString())) {
         log.debug(
