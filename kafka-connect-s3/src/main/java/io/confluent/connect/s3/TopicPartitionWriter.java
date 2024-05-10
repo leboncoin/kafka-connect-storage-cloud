@@ -190,8 +190,10 @@ public class TopicPartitionWriter {
 
     // Initialize scheduled rotation timer if applicable
     setNextScheduledRotation();
+
   }
-  public TopicPartitionWriter withFileEventProvider(Optional<FileEventProvider> fileEventProvider){
+
+  public TopicPartitionWriter withFileEventProvider(Optional<FileEventProvider> fileEventProvider) {
     this.fileCallback = fileEventProvider;
     return this;
   }
