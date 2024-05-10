@@ -165,6 +165,10 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
   public static final String BEHAVIOR_ON_NULL_VALUES_CONFIG = "behavior.on.null.values";
   public static final String BEHAVIOR_ON_NULL_VALUES_DEFAULT = OutputWriteBehavior.FAIL.toString();
 
+  public static final String COMMIT_OFFSET_ON_NULL_VALUES_CONFIG = "commit.offset.on.null.values";
+  public static final boolean COMMIT_OFFSET_ON_NULL_VALUES_DEFAULT = false;
+
+
   /**
    * Maximum back-off time when retrying failed requests.
    */
@@ -662,6 +666,20 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
           ++orderInGroup,
           Width.SHORT,
           "Behavior for null-valued records"
+      );
+
+      configDef.define(
+          COMMIT_OFFSET_ON_NULL_VALUES_CONFIG,
+          Type.BOOLEAN,
+          COMMIT_OFFSET_ON_NULL_VALUES_DEFAULT,
+          Importance.LOW,
+          "When a buffer contains only null records, commit the Kafka offset even if the buffer"
+              + " is not written to S3. This is useful when the connector is used in a scenario"
+              + " where the source topic contains a mix of null and non-null records.",
+          group,
+          ++orderInGroup,
+          Width.SHORT,
+          "Commit Kafka offset even on skipped null values"
       );
 
       // This is done to avoid aggressive schema based rotations resulting out of interleaving
@@ -1360,6 +1378,10 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
 
   public String nullValueBehavior() {
     return getString(BEHAVIOR_ON_NULL_VALUES_CONFIG);
+  }
+
+  public boolean commitOnNullValue() {
+    return getBoolean(COMMIT_OFFSET_ON_NULL_VALUES_CONFIG);
   }
 
   public enum IgnoreOrFailBehavior {

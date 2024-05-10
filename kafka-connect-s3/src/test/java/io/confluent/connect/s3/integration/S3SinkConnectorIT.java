@@ -36,6 +36,7 @@ import io.confluent.connect.s3.storage.S3Storage;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -47,12 +48,19 @@ import java.util.concurrent.TimeUnit;
 
 import io.confluent.connect.s3.util.EmbeddedConnectUtils;
 import org.apache.commons.io.FileUtils;
+import org.apache.kafka.clients.admin.Admin;
+import org.apache.kafka.clients.admin.ConsumerGroupListing;
+import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsOptions;
+import org.apache.kafka.clients.admin.ListConsumerGroupsOptions;
+import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -151,6 +159,16 @@ public class S3SinkConnectorIT extends BaseConnectorIT {
     testTombstoneRecordsWritten(JSON_EXTENSION, false);
   }
 
+  @Test
+  public void testCommitOnTombstone() throws Throwable {
+    props.put(FORMAT_CLASS_CONFIG, JsonFormat.class.getName());
+    props.put(BEHAVIOR_ON_NULL_VALUES_CONFIG, OutputWriteBehavior.IGNORE.toString());
+    props.put(COMMIT_OFFSET_ON_NULL_VALUES_CONFIG, "true");
+    props.put(STORE_KAFKA_KEYS_CONFIG, "true");
+    props.put(KEYS_FORMAT_CLASS_CONFIG, "io.confluent.connect.s3.format.json.JsonFormat");
+    testTombstoneRecordsWritten(JSON_EXTENSION, false);
+  }
+
 
   public void testFilesWrittenToBucketAvroWithExtInTopic() throws Throwable {
     //add test specific props
@@ -161,7 +179,7 @@ public class S3SinkConnectorIT extends BaseConnectorIT {
   @Test
   public void testFilesWrittenToBucketParquetWithExtInTopic() throws Throwable {
     //add test specific props
-    props.put(FORMAT_CLASS_CONFIG, ParquetFormat.class.getName());
+        props.put(FORMAT_CLASS_CONFIG, ParquetFormat.class.getName());
     testBasicRecordsWritten(PARQUET_EXTENSION, true);
   }
 
@@ -217,6 +235,13 @@ public class S3SinkConnectorIT extends BaseConnectorIT {
     int countPerTopic = NUM_RECORDS_INSERT / FLUSH_SIZE_STANDARD;
     int expectedTotalFileCount = countPerTopic * topicNames.size();
     waitForFilesInBucket(TEST_BUCKET_NAME, expectedTotalFileCount);
+
+    ListConsumerGroupOffsetsOptions listConsumerGroupOffsetsOptions = new ListConsumerGroupOffsetsOptions();
+    listConsumerGroupOffsetsOptions.topicPartitions(Collections.singletonList(new TopicPartition("TestTopic", TOPIC_PARTITION)));
+    Collection<ConsumerGroupListing> consumerGroups = kafkaAdmin.listConsumerGroups().all().get();
+    Map<TopicPartition, OffsetAndMetadata> offsets = kafkaAdmin.listConsumerGroupOffsets("connect-s3-sink", listConsumerGroupOffsetsOptions).partitionsToOffsetAndMetadata().get();
+    kafkaAdmin.describeConsumerGroups(Collections.singletonList("connect-s3-sink")).all().get();
+    kafkaAdmin.listOffsets(Collections.singletonMap(new TopicPartition("TestTopic", TOPIC_PARTITION), OffsetSpec.latest())).all().get();
 
     Set<String> expectedTopicFilenames = new TreeSet<>();
     for (String thisTopicName : topicNames) {

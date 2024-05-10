@@ -190,8 +190,10 @@ public class TopicPartitionWriter {
 
     // Initialize scheduled rotation timer if applicable
     setNextScheduledRotation();
+
   }
-  public TopicPartitionWriter withFileEventProvider(Optional<FileEventProvider> fileEventProvider){
+
+  public TopicPartitionWriter withFileEventProvider(Optional<FileEventProvider> fileEventProvider) {
     this.fileCallback = fileEventProvider;
     return this;
   }
@@ -348,7 +350,16 @@ public class TopicPartitionWriter {
       return true;
     }
 
+    if (rotateOnTombstonesBatch()) {
+      nextState();
+      return true;
+    }
+
     return false;
+  }
+
+  private boolean rotateOnTombstonesBatch() {
+    return connectorConfig.commitOnNullValue() && buffer.stream().allMatch(record -> record.value() == null);
   }
 
   private void commitOnTimeIfNoData(long now) {
