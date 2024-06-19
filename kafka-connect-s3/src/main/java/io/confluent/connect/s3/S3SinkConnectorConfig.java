@@ -220,6 +220,14 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
       + "to prefix or suffix in the s3 path after the topic name."
       + " None will not append the schema name in the s3 path.";
 
+  public static final String USE_DEFAULT_TOMBSTONE_PARTITIONER_CONFIG =
+      "use.default.custom.partitioner";
+  public static final Boolean USE_DEFAULT_TOMBSTONE_PARTITIONER_DEFAULT = true;
+  public static final String USE_DEFAULT_TOMBSTONE_PARTITIONER_DOC = "Use the default partitioner "
+      + "for tombstone records. If set to false, the tombstone records will be written to the "
+      + "same partition as the original record. If set to true, the tombstone records will be "
+      + "written in the specified path .";
+
   private static final GenericRecommender SCHEMA_PARTITION_AFFIX_TYPE_RECOMMENDER =
       new GenericRecommender();
 
@@ -850,6 +858,18 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
               Width.LONG,
               "File event config json"
       );
+
+      configDef.define(
+          USE_DEFAULT_TOMBSTONE_PARTITIONER_CONFIG,
+          Type.BOOLEAN,
+          USE_DEFAULT_TOMBSTONE_PARTITIONER_DEFAULT,
+          Importance.LOW,
+          USE_DEFAULT_TOMBSTONE_PARTITIONER_DOC,
+          group,
+          ++orderInGroup,
+          Width.LONG,
+          "Enable default tombstone Partitioner"
+      );
     }
     return configDef;
   }
@@ -1046,6 +1066,10 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
 
   public boolean isTombstoneWriteEnabled() {
     return OutputWriteBehavior.WRITE.toString().equalsIgnoreCase(nullValueBehavior());
+  }
+
+  public boolean useDefaultTombstonePartitioner() {
+    return getBoolean(USE_DEFAULT_TOMBSTONE_PARTITIONER_CONFIG);
   }
 
   public String getTombstoneEncodedPartition() {

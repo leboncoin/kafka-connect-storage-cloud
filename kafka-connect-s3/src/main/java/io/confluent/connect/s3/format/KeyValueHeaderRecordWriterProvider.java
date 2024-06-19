@@ -75,7 +75,7 @@ public class KeyValueHeaderRecordWriterProvider
         ? filename.substring(0, filename.length() - valueProvider.getExtension().length())
         : filename;
 
-    Optional<RecordWriter> valueWriter = filename.contains(conf.getTombstoneEncodedPartition())
+    Optional<RecordWriter> valueWriter = filename.contains(conf.getTombstoneEncodedPartition()) || !conf.useDefaultTombstonePartitioner()
         ? Optional.empty() : Optional.of(valueProvider.getRecordWriter(conf, strippedFilename));
     Optional<RecordWriter> keyWriter = Optional.ofNullable(keyProvider)
             .map(keyProvider -> keyProvider.getRecordWriter(conf, strippedFilename));

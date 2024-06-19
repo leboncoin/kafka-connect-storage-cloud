@@ -241,7 +241,7 @@ public class S3SinkTask extends SinkTask {
     if (config.getSchemaPartitionAffixType() != S3SinkConnectorConfig.AffixType.NONE) {
       partitioner = new SchemaPartitioner<>(partitioner);
     }
-    if (config.isTombstoneWriteEnabled()) {
+    if (config.isTombstoneWriteEnabled() && config.useDefaultTombstonePartitioner()) {
       String tomebstonePartition = config.getTombstoneEncodedPartition();
       partitioner = new TombstoneSupportedPartitioner<>(partitioner, tomebstonePartition);
     }
