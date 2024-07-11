@@ -152,10 +152,10 @@ public class S3SinkFileEventIT extends BaseConnectorIT {
                     null);
     KafkaFileEventProvider fileEvent =
             new KafkaFileEventProvider(kafkaFileEventConfig.toJson(), false);
-    fileEvent.call(clusterName,"baz-topic", "version/event/hour", "file1.avro", 12,
+    fileEvent.call("baz-topic", "version/event/hour", "file1.avro", 12,
             new DateTime(1234L), new DateTime(123L),
             34, new DateTime(1234L).withZone(DateTimeZone.UTC));
-    fileEvent.call(clusterName,"foo-topic", "version/event/hour", "fil2.avro", 8,
+    fileEvent.call("foo-topic", "version/event/hour", "fil2.avro", 8,
             new DateTime(12345L), new DateTime(1234L), 12, new DateTime(12345L));
 
     // fails if two records are not present in kafka within 1s

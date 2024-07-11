@@ -32,7 +32,6 @@ public class KafkaFileEventProvider extends FileEventProvider {
 
     @Override
     public void callImpl(
-            String clusterName,
             String topicName,
             String s3Partition,
             String filePath,
@@ -44,7 +43,7 @@ public class KafkaFileEventProvider extends FileEventProvider {
         String key = topicName;
         FileEvent value =
                 new FileEvent(
-                        clusterName,
+                        this.kafkaConfig.getClusterName(),
                         topicName,
                         s3Partition,
                         filePath,
