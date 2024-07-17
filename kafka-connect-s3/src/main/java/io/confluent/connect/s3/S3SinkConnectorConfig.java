@@ -81,7 +81,6 @@ import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
   // S3 Group
   public static final String S3_BUCKET_CONFIG = "s3.bucket.name";
-
   public static final String S3_OBJECT_TAGGING_CONFIG = "s3.object.tagging";
   public static final boolean S3_OBJECT_TAGGING_DEFAULT = false;
 
@@ -296,7 +295,6 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
         connectorGroup,
         latestOrderInGroup
     );
-
 
     {
       final String group = "S3";
@@ -898,7 +896,6 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
       propertyToConfig.put(key, config);
     }
   }
-
 
   public String getBucketName() {
     return getString(S3_BUCKET_CONFIG);

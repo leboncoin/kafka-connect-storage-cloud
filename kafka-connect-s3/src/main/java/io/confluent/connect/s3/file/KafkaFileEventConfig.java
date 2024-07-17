@@ -15,11 +15,8 @@
 
 package io.confluent.connect.s3.file;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
 import java.util.Properties;
 
-@JsonIgnoreProperties(ignoreUnknown = true)
 public class KafkaFileEventConfig extends AbstractFileEventConfig {
 
   private static final String KEY_SERIALIZER =
