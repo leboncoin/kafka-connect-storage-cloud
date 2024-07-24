@@ -51,6 +51,7 @@ public abstract class FileEventProvider implements Closeable {
     try {
       log.info("Running file event : {}, {}", topicName, filePath);
       callImpl(topicName, s3Partition, filePath, partition, baseRecordTimestamp, currentTimestamp, recordCount, eventDatetime);
+      log.info("file event sent : {}, {}", topicName, filePath);
     } catch (Exception e) {
       if (skipError) {
         log.error(e.getMessage(), e);
