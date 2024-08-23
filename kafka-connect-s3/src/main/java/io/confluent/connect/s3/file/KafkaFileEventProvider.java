@@ -30,6 +30,7 @@ public class KafkaFileEventProvider extends FileEventProvider {
   public KafkaFileEventProvider(String configJson, boolean skipError) {
     super(configJson, skipError);
     this.kafkaConfig = KafkaFileEventConfig.fromJsonString(configJson, KafkaFileEventConfig.class);
+    System.out.println("config json: " + configJson);
     producer = new KafkaProducer<>(kafkaConfig.toProps());
   }
 
@@ -46,6 +47,7 @@ public class KafkaFileEventProvider extends FileEventProvider {
     String key = topicName;
     FileEvent value =
         new FileEvent(
+            kafkaConfig.getClusterName(),
             topicName,
             s3Partition,
             filePath,

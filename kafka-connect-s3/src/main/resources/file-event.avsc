@@ -5,6 +5,12 @@
   "doc": "This event represents a fileEvent Message",
   "fields": [
     {
+      "name": "cluster_name",
+      "type": ["null", "string"],
+      "doc": "The kafka cluster name of the source topic",
+      "default": null
+    },
+    {
       "name": "topic_name",
       "type": "string",
       "doc": "The topic name of the record being written"
