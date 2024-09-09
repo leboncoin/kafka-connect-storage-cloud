@@ -55,7 +55,9 @@ public class KafkaFileEventProvider extends FileEventProvider {
             recordCount,
             formatDateRFC3339(eventDatetime),
             kafkaConfig.getDatabaseName(),
-            kafkaConfig.getTableName());
+            kafkaConfig.getTableName(),
+                null);
+
     producer.send(
         new ProducerRecord<>(kafkaConfig.getTopicName(), key, value),
         (event, ex) -> {

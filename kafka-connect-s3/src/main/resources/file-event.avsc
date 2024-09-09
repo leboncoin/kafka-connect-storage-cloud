@@ -55,6 +55,15 @@
       "type": ["null", "string"],
       "doc": "The table name of the record being written",
       "default": null
+    },
+    {
+      "name": "cluster_name",
+      "type": [
+        "null",
+        "string"
+      ],
+      "doc": "Topic source cluster name",
+      "default": null
     }
   ]
 }
