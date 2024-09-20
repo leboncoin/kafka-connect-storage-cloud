@@ -30,7 +30,6 @@ public class KafkaFileEventProvider extends FileEventProvider {
   public KafkaFileEventProvider(String configJson, boolean skipError) {
     super(configJson, skipError);
     this.kafkaConfig = KafkaFileEventConfig.fromJsonString(configJson, KafkaFileEventConfig.class);
-    System.out.println("config json: " + configJson);
     producer = new KafkaProducer<>(kafkaConfig.toProps());
   }
 
@@ -58,6 +57,7 @@ public class KafkaFileEventProvider extends FileEventProvider {
             .setDatabaseName(kafkaConfig.getDatabaseName())
             .setTableName(kafkaConfig.getTableName())
             .build();
+    System.out.println("value file event sent to partition ack: " + value);
     producer.send(
         new ProducerRecord<>(kafkaConfig.getTopicName(), key, value),
         (event, ex) -> {

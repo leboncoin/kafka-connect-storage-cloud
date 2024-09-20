@@ -6,8 +6,8 @@
   "fields": [
     {
       "name": "cluster_name",
-      "type": ["null", "string"],
-      "doc": "The kafka cluster name of the source topic",
+      "type": ["null","string"],
+      "doc": "The cluster name of the record being written",
       "default": null
     },
     {
