@@ -6,7 +6,10 @@
   "fields": [
     {
       "name": "cluster_name",
-      "type": ["null","string"],
+      "type": [
+        "null",
+        "string"
+      ],
       "doc": "The cluster name of the record being written",
       "default": null
     },
@@ -32,12 +35,18 @@
     },
     {
       "name": "base_record_timestamp",
-      "type": ["null", "string"],
+      "type": [
+        "null",
+        "string"
+      ],
       "doc": "Time of the first record written in the file, in RFC 3339. Defined when partitioner is time based only."
     },
     {
       "name": "current_timestamp",
-      "type": ["null", "string"],
+      "type": [
+        "null",
+        "string"
+      ],
       "doc": "Time of the last record written in the file, in RFC 3339. Defined when partitioner is time based only."
     },
     {
@@ -52,14 +61,29 @@
     },
     {
       "name": "database_name",
-      "type": ["null", "string"],
+      "type": [
+        "null",
+        "string"
+      ],
       "doc": "The database name of the record being written",
       "default": null
     },
     {
       "name": "table_name",
-      "type": ["null", "string"],
+      "type": [
+        "null",
+        "string"
+      ],
       "doc": "The table name of the record being written",
+      "default": null
+    },
+    {
+      "name": "format",
+      "type": [
+        "null",
+        "string"
+      ],
+      "doc": "The format being written",
       "default": null
     }
   ]
