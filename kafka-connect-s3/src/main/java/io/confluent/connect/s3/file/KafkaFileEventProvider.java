@@ -42,20 +42,22 @@ public class KafkaFileEventProvider extends FileEventProvider {
       DateTime baseRecordTimestamp,
       DateTime currentTimestamp,
       int recordCount,
-      DateTime eventDatetime) {
+      DateTime eventDatetime,
+      String format) {
     String key = topicName;
-    FileEvent value =
-        new FileEvent(
-            topicName,
-            s3Partition,
-            filePath,
-            partition,
-            formatDateRFC3339(baseRecordTimestamp),
-            formatDateRFC3339(currentTimestamp),
-            recordCount,
-            formatDateRFC3339(eventDatetime),
-            kafkaConfig.getDatabaseName(),
-            kafkaConfig.getTableName());
+    FileEvent value = FileEvent.newBuilder()
+        .setTopicName(topicName)
+        .setS3Partition(s3Partition)
+        .setFilePath(filePath)
+        .setPartition(partition)
+        .setBaseRecordTimestamp(formatDateRFC3339(baseRecordTimestamp))
+        .setCurrentTimestamp(formatDateRFC3339(currentTimestamp))
+        .setRecordCount(recordCount)
+        .setEventDatetime(formatDateRFC3339(eventDatetime))
+        .setDatabaseName(kafkaConfig.getDatabaseName())
+        .setTableName(kafkaConfig.getTableName())
+        .setFormat(format)
+        .build();
     producer.send(
         new ProducerRecord<>(kafkaConfig.getTopicName(), key, value),
         (event, ex) -> {
