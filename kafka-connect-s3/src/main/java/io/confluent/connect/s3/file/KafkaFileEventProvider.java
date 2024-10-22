@@ -57,7 +57,6 @@ public class KafkaFileEventProvider extends FileEventProvider {
             .setDatabaseName(kafkaConfig.getDatabaseName())
             .setTableName(kafkaConfig.getTableName())
             .build();
-    System.out.println("value file event sent to partition ack: " + value);
     producer.send(
         new ProducerRecord<>(kafkaConfig.getTopicName(), key, value),
         (event, ex) -> {
@@ -65,6 +64,7 @@ public class KafkaFileEventProvider extends FileEventProvider {
             throw new RuntimeException(ex);
           }
         });
+    System.out.println("value file event sent to partition ack: " + value);
   }
 
   @Override
