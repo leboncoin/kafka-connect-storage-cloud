@@ -64,7 +64,6 @@ public class KafkaFileEventProvider extends FileEventProvider {
             throw new RuntimeException(ex);
           }
         });
-    System.out.println("value file event sent to partition ack: " + value);
   }
 
   @Override

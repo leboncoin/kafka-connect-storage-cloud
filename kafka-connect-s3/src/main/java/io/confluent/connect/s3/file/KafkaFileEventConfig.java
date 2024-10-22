@@ -93,6 +93,7 @@ public class KafkaFileEventConfig extends AbstractFileEventConfig {
     prop.setProperty("bootstrap.servers", bootstrapServers);
     prop.setProperty("topic.name", topicName);
     prop.setProperty("schema.registry.url", schemaRegistryUrl);
+    // avoid schema mismatching when set to true this add java type to avro schema
     prop.setProperty("avro.remove.java.properties", "true");
     // custom
     for (Map.Entry<String, Object> custom : custom.entrySet()) {
