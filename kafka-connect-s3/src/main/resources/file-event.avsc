@@ -85,6 +85,15 @@
       ],
       "doc": "The format being written",
       "default": null
+    },
+    {
+      "name": "fully_qualified_record_name",
+      "type": [
+        "null",
+        "string"
+      ],
+      "doc": "The fully qualified record name, <namespace>.<record_name>",
+      "default": null
     }
   ]
 }

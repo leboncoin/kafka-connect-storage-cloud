@@ -43,7 +43,8 @@ public class KafkaFileEventProvider extends FileEventProvider {
       DateTime currentTimestamp,
       int recordCount,
       DateTime eventDatetime,
-      String format) {
+      String format,
+      String fullyQualifiedRecordName) {
     String key = topicName;
     FileEvent value = FileEvent.newBuilder()
         .setTopicName(topicName)
@@ -57,6 +58,7 @@ public class KafkaFileEventProvider extends FileEventProvider {
         .setDatabaseName(kafkaConfig.getDatabaseName())
         .setTableName(kafkaConfig.getTableName())
         .setFormat(format)
+        .setFullyQualifiedRecordName(fullyQualifiedRecordName)
         .build();
     producer.send(
         new ProducerRecord<>(kafkaConfig.getTopicName(), key, value),

@@ -171,7 +171,8 @@ public class S3SinkFileEventIT extends BaseConnectorIT {
         new DateTime(123L),
         34,
         new DateTime(1234L).withZone(DateTimeZone.UTC),
-        "parquet");
+        "parquet",
+        "fullyQualifiedRecordName");
     fileEvent.call(
         "foo-topic",
         "version/event/hour",
@@ -181,7 +182,8 @@ public class S3SinkFileEventIT extends BaseConnectorIT {
         new DateTime(1234L),
         12,
         new DateTime(12345L),
-        "parquet");
+        "parquet",
+        "fullyQualifiedRecordName");
 
     // fails if two records are not present in kafka within 1s
     connect.kafka().consume(2, 1000L, fileEventTopic);

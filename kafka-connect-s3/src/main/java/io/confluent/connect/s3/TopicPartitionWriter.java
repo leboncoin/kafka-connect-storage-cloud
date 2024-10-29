@@ -16,6 +16,7 @@
 package io.confluent.connect.s3;
 
 import com.amazonaws.SdkClientException;
+import io.confluent.connect.avro.AvroData;
 import io.confluent.connect.s3.file.FileEventProvider;
 import io.confluent.connect.s3.storage.S3Storage;
 import io.confluent.connect.s3.util.FileRotationTracker;
@@ -688,7 +689,8 @@ public class TopicPartitionWriter {
         new DateTime(baseRecordTimestamp).withZone(timeZone),
         new DateTime(currentTimestamp).withZone(timeZone), (recordCounts.get(encodedPartition)).intValue(),
         new DateTime(time.milliseconds()).withZone(timeZone),
-        Utils.extractFormat(connectorConfig.formatClass())));
+        Utils.extractFormat(connectorConfig.formatClass()),
+        currentSchemas.get(encodedPartition).name()));
   }
 
   private void tagFile(String encodedPartition, String s3ObjectPath) {
