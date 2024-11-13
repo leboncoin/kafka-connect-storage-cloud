@@ -46,10 +46,12 @@ public abstract class FileEventProvider implements Closeable {
           DateTime baseRecordTimestamp,
           DateTime currentTimestamp,
           int recordCount,
-          DateTime eventDatetime) {
+          DateTime eventDatetime,
+          String format,
+          String fullyQualifiedRecordName) {
     try {
       log.info("Running file event : {}, {}", topicName, filePath);
-      callImpl(topicName, s3Partition, filePath, partition, baseRecordTimestamp, currentTimestamp, recordCount, eventDatetime);
+      callImpl(topicName, s3Partition, filePath, partition, baseRecordTimestamp, currentTimestamp, recordCount, eventDatetime,format, fullyQualifiedRecordName);
     } catch (Exception e) {
       if (skipError) {
         log.error(e.getMessage(), e);
@@ -66,5 +68,7 @@ public abstract class FileEventProvider implements Closeable {
       DateTime baseRecordTimestamp,
       DateTime currentTimestamp,
       int recordCount,
-      DateTime eventDatetime);
+      DateTime eventDatetime,
+      String format,
+      String fullyQualifiedRecordName);
 }

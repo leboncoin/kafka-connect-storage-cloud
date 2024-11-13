@@ -16,11 +16,13 @@
 package io.confluent.connect.s3;
 
 import com.amazonaws.SdkClientException;
+import io.confluent.connect.avro.AvroData;
 import io.confluent.connect.s3.file.FileEventProvider;
 import io.confluent.connect.s3.storage.S3Storage;
 import io.confluent.connect.s3.util.FileRotationTracker;
 import io.confluent.connect.s3.util.RetryUtil;
 import io.confluent.connect.s3.util.TombstoneTimestampExtractor;
+import io.confluent.connect.s3.util.Utils;
 import io.confluent.connect.storage.errors.PartitionException;
 import io.confluent.connect.storage.schema.SchemaCompatibilityResult;
 import org.apache.kafka.common.TopicPartition;
@@ -148,7 +150,7 @@ public class TopicPartitionWriter {
     isTaggingEnabled = connectorConfig.getBoolean(S3SinkConnectorConfig.S3_OBJECT_TAGGING_CONFIG);
     ignoreTaggingErrors = connectorConfig.getString(
             S3SinkConnectorConfig.S3_OBJECT_BEHAVIOR_ON_TAGGING_ERROR_CONFIG)
-            .equalsIgnoreCase(S3SinkConnectorConfig.IgnoreOrFailBehavior.IGNORE.toString());
+        .equalsIgnoreCase(S3SinkConnectorConfig.IgnoreOrFailBehavior.IGNORE.toString());
     flushSize = connectorConfig.getInt(S3SinkConnectorConfig.FLUSH_SIZE_CONFIG);
     topicsDir = connectorConfig.getString(StorageCommonConfig.TOPICS_DIR_CONFIG);
     rotateIntervalMs = connectorConfig.getLong(S3SinkConnectorConfig.ROTATE_INTERVAL_MS_CONFIG);
@@ -191,7 +193,8 @@ public class TopicPartitionWriter {
     // Initialize scheduled rotation timer if applicable
     setNextScheduledRotation();
   }
-  public TopicPartitionWriter withFileEventProvider(Optional<FileEventProvider> fileEventProvider){
+
+  public TopicPartitionWriter withFileEventProvider(Optional<FileEventProvider> fileEventProvider) {
     this.fileCallback = fileEventProvider;
     return this;
   }
@@ -294,6 +297,7 @@ public class TopicPartitionWriter {
 
   /**
    * Check if we should rotate the file (schema change, time-based).
+   *
    * @returns true if rotation is being performed, false otherwise
    */
   private boolean checkRotationOrAppend(
@@ -319,7 +323,7 @@ public class TopicPartitionWriter {
       // This branch is never true for the first record read by this TopicPartitionWriter
       log.trace(
           "Incompatible change of schema detected for record '{}' with encoded partition "
-          + "'{}' and current offset: '{}'",
+              + "'{}' and current offset: '{}'",
           record,
           encodedPartition,
           currentOffset
@@ -358,7 +362,7 @@ public class TopicPartitionWriter {
       if (recordCount > 0 && rotateOnTime(currentEncodedPartition, currentTimestamp, now)) {
         log.info(
             "Committing files after waiting for rotateIntervalMs time but less than flush.size "
-            + "records available."
+                + "records available."
         );
         setNextScheduledRotation();
 
@@ -558,17 +562,17 @@ public class TopicPartitionWriter {
   private String fileKey(String topicsPrefix, String keyPrefix, String name) {
     String suffix = keyPrefix + dirDelim + name;
     return StringUtils.isNotBlank(topicsPrefix)
-           ? topicsPrefix + dirDelim + suffix
-           : suffix;
+        ? topicsPrefix + dirDelim + suffix
+        : suffix;
   }
 
   private String fileKeyToCommit(String dirPrefix, long startOffset) {
     String name = tp.topic()
-                      + fileDelim
-                      + tp.partition()
-                      + fileDelim
-                      + String.format(zeroPadOffsetFormat, startOffset)
-                      + extension;
+        + fileDelim
+        + tp.partition()
+        + fileDelim
+        + String.format(zeroPadOffsetFormat, startOffset)
+        + extension;
     return fileKey(topicsDir, dirPrefix, name);
   }
 
@@ -645,9 +649,9 @@ public class TopicPartitionWriter {
       callbackFile(encodedPartition);
       if (isTaggingEnabled) {
         RetryUtil.exponentialBackoffRetry(() -> tagFile(encodedPartition, entry.getValue()),
-                ConnectException.class,
-                connectorConfig.getInt(S3_PART_RETRIES_CONFIG),
-                connectorConfig.getLong(S3_RETRY_BACKOFF_CONFIG)
+            ConnectException.class,
+            connectorConfig.getInt(S3_PART_RETRIES_CONFIG),
+            connectorConfig.getLong(S3_RETRY_BACKOFF_CONFIG)
         );
       }
       startOffsets.remove(encodedPartition);
@@ -681,10 +685,12 @@ public class TopicPartitionWriter {
 
   private void callbackFile(String encodedPartition) {
     fileCallback.ifPresent(fs -> fs.call(tp.topic(), encodedPartition,
-            commitFiles.get(encodedPartition), tp.partition(),
-            new DateTime(baseRecordTimestamp).withZone(timeZone),
-            new DateTime(currentTimestamp).withZone(timeZone), (recordCounts.get(encodedPartition)).intValue(),
-            new DateTime(time.milliseconds()).withZone(timeZone)));
+        commitFiles.get(encodedPartition), tp.partition(),
+        new DateTime(baseRecordTimestamp).withZone(timeZone),
+        new DateTime(currentTimestamp).withZone(timeZone), (recordCounts.get(encodedPartition)).intValue(),
+        new DateTime(time.milliseconds()).withZone(timeZone),
+        Utils.extractFormat(connectorConfig.formatClass()),
+        currentSchemas.get(encodedPartition).name()));
   }
 
   private void tagFile(String encodedPartition, String s3ObjectPath) {
@@ -724,7 +730,7 @@ public class TopicPartitionWriter {
     } catch (Exception e) {
       if (ignoreTaggingErrors) {
         log.warn("Unrecoverable exception while attempting to tag S3 object {}. Ignoring.",
-                s3ObjectPath, e);
+            s3ObjectPath, e);
       } else {
         throw new ConnectException(String.format("Unable to tag S3 object %s", s3ObjectPath), e);
       }

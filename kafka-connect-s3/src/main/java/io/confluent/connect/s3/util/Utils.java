@@ -20,18 +20,33 @@ import io.confluent.connect.s3.format.RecordView;
 import org.apache.kafka.connect.sink.SinkRecord;
 
 public class Utils {
+  public enum Format {
+    JSON("json"),
+    PARQUET("parquet");
+
+    private final String format;
+
+    Format(String format) {
+      this.format = format;
+    }
+
+    @Override
+    public String toString() {
+      return this.format;
+    }
+  }
 
   /**
    * Get the filename for the respective record view. Appends the Value, Key or Header file
    * extensions before the existing file extension. Typically unchanged for the Value view.
    *
-   * @param recordView the record view (key, header or value)
-   * @param filename the current name of the file, equivalent
+   * @param recordView       the record view (key, header or value)
+   * @param filename         the current name of the file, equivalent
    * @param initialExtension the file extension without the appended view extension, eg. .avro
    * @return the filename with the view extension appended, eg. file1.keys.avro
    */
   public static String getAdjustedFilename(RecordView recordView, String filename,
-      String initialExtension) {
+                                           String initialExtension) {
     if (filename.endsWith(initialExtension)) {
       int index = filename.lastIndexOf(initialExtension);
       return filename.substring(0, index) + recordView.getExtension() + initialExtension;
@@ -50,5 +65,21 @@ public class Utils {
   public static String sinkRecordToLoggableString(SinkRecord sinkRecord) {
     return "SinkRecord{kafkaOffset=" + sinkRecord.kafkaOffset() + ", topic='" + sinkRecord.topic()
         + "', kafkaPartition=" + sinkRecord.kafkaPartition() + "} ";
+  }
+
+  /**
+   * Extracts the format type from the given format class.
+   *
+   * @param formatClass the format class
+   * @return the format type as a string
+   */
+  public static String extractFormat(Class<?> formatClass) {
+    if (formatClass == io.confluent.connect.s3.format.json.JsonFormat.class) {
+      return Format.JSON.toString();
+    } else if (formatClass == io.confluent.connect.s3.format.parquet.ParquetFormat.class) {
+      return Format.PARQUET.toString();
+    } else {
+      throw new IllegalArgumentException("Unknown format class: " + formatClass.getName());
+    }
   }
 }
