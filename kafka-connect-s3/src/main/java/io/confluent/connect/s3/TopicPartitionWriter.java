@@ -690,7 +690,7 @@ public class TopicPartitionWriter {
         new DateTime(currentTimestamp).withZone(timeZone), (recordCounts.get(encodedPartition)).intValue(),
         new DateTime(time.milliseconds()).withZone(timeZone),
         Utils.extractFormat(connectorConfig.formatClass()),
-        currentSchemas.get(encodedPartition).name()));
+        currentSchemas.get(encodedPartition) != null ? currentSchemas.get(encodedPartition).name() : null));
   }
 
   private void tagFile(String encodedPartition, String s3ObjectPath) {
