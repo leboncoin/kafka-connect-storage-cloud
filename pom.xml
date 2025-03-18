@@ -21,13 +21,13 @@
     <parent>
         <groupId>io.confluent</groupId>
         <artifactId>kafka-connect-storage-common-parent</artifactId>
-        <version>11.2.0</version>
+        <version>11.2.20</version>
     </parent>
 
     <groupId>io.confluent</groupId>
     <artifactId>kafka-connect-storage-cloud</artifactId>
     <packaging>pom</packaging>
-    <version>10.6.0-SNAPSHOT</version>
+    <version>10.5.24-SNAPSHOT</version>
     <name>kafka-connect-storage-cloud</name>
     <organization>
         <name>Confluent, Inc.</name>
@@ -58,21 +58,21 @@
     </modules>
 
     <properties>
-        <jackson.core.version>2.15.0</jackson.core.version>
-        <snappy.java>1.1.10.1</snappy.java>
+        <snappy.java>1.1.10.4</snappy.java>
         <checkstyle.suppressions.location>checkstyle/suppressions.xml</checkstyle.suppressions.location>
         <maven.release.plugin.version>2.5.3</maven.release.plugin.version>
         <!-- temporary fix by pinning the version until we upgrade to a version of common that contains this or newer version.
             See https://github.com/confluentinc/common/pull/332 for details -->
         <dependency.check.version>6.1.6</dependency.check.version>
-        <hadoop.version>3.2.4</hadoop.version>
+        <hadoop.version>3.4.1</hadoop.version>
         <jettison.version>1.5.4</jettison.version>
         <json-smart.version>2.4.10</json-smart.version>
         <jetty.version>9.4.48.v20220622</jetty.version>
         <snakeyaml.version>2.0</snakeyaml.version>
         <woodstox.version>5.4.0</woodstox.version>
-        <jackson.core.version>2.15.0</jackson.core.version>
-        <snappy.java>1.1.10.1</snappy.java>
+        <guava.version>32.1.2-jre</guava.version>
+        <zookeeper.version>3.8.4</zookeeper.version>
+        <dnsjava.version>3.6.1</dnsjava.version>
     </properties>
 
     <repositories>
@@ -90,6 +90,17 @@
                 <groupId>org.yaml</groupId>
                 <artifactId>snakeyaml</artifactId>
                 <version>${snakeyaml.version}</version>
+            </dependency>
+            <!-- band aid until the connector catches up with updated pom parent -->
+            <dependency>
+                <groupId>org.xerial.snappy</groupId>
+                <artifactId>snappy-java</artifactId>
+                <version>${snappy.java}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bitbucket.b_c</groupId>
+                <artifactId>jose4j</artifactId>
+                <version>0.9.3</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -142,23 +153,18 @@
         </dependency>
         <dependency>
             <groupId>io.confluent</groupId>
-            <artifactId>kafka-connect-storage-common-htrace-core4-shaded</artifactId>
+            <artifactId>kafka-connect-storage-common-hadoop-shaded-guava</artifactId>
             <version>${kafka.connect.storage.common.version}</version>
         </dependency>
+        <!-- <dependency>
+            <groupId>io.confluent</groupId>
+            <artifactId>kafka-connect-storage-common-htrace-core4-shaded</artifactId>
+            <version>${kafka.connect.storage.common.version}</version>
+        </dependency> -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.databind.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-core</artifactId>
-            <version>${jackson.core.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.xerial.snappy</groupId>
-            <artifactId>snappy-java</artifactId>
-            <version>${snappy.java}</version>
         </dependency>
         <dependency>
             <groupId>org.codehaus.jettison</groupId>
@@ -176,6 +182,12 @@
             <artifactId>woodstox-core</artifactId>
             <version>${woodstox.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>zookeeper</artifactId>
+            <version>${zookeeper.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
@@ -253,7 +265,34 @@
                     <groupId>commons-net</groupId>
                     <artifactId>commons-net</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.apache.zookeeper</groupId>
+                    <artifactId>zookeeper</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.google.protobuf</groupId>
+                    <artifactId>protobuf-java</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.hadoop.thirdparty</groupId>
+                    <artifactId>hadoop-shaded-protobuf_3_21</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-handler</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-transport-native-epoll</artifactId>
+                </exclusion>
             </exclusions>
+        </dependency>
+        <!-- Pin transitive dependency of hadoop-common to fix CC-26361 since current latest version of hadoop-common does not include this.
+        This can/should be removed once we see the update from hadoop-common -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-configuration2</artifactId>
+            <version>2.10.1</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -325,6 +364,10 @@
                     <groupId>com.google.guava</groupId>
                     <artifactId>guava</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.apache.hadoop.thirdparty</groupId>
+                    <artifactId>hadoop-shaded-protobuf_3_21</artifactId>
+                </exclusion>
             </exclusions>
             <scope>test</scope>
         </dependency>
@@ -367,14 +410,9 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.xerial.snappy</groupId>
-            <artifactId>snappy-java</artifactId>
-            <version>${snappy.java}</version>
-        </dependency>
-        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
-            <version>${jackson.core.version}</version>
+            <version>${jackson.version}</version>
         </dependency>
         <dependency>
             <groupId>io.confluent</groupId>
@@ -413,6 +451,22 @@
             <artifactId>mockito-core</artifactId>
             <version>2.19.0</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>${guava.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.avro</groupId>
+            <artifactId>avro</artifactId>
+            <version>${avro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dnsjava</groupId>
+            <artifactId>dnsjava</artifactId>
+            <version>${dnsjava.version}</version>
         </dependency>
     </dependencies>
 
