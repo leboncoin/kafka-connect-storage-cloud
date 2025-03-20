@@ -20,6 +20,7 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.regions.Region;
 import com.amazonaws.regions.RegionUtils;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.model.CannedAccessControlList;
@@ -36,8 +37,8 @@ import org.apache.kafka.common.config.ConfigDef.Validator;
 import org.apache.kafka.common.config.ConfigDef.Width;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.types.Password;
-import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.json.DecimalFormat;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 
 import java.util.ArrayList;
@@ -134,6 +135,9 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
   public static final String COMPRESSION_TYPE_CONFIG = "s3.compression.type";
   public static final String COMPRESSION_TYPE_DEFAULT = "none";
 
+  public static final String SEND_DIGEST_CONFIG = "s3.send.digest";
+  public static final boolean SEND_DIGEST_DEFAULT = false;
+
   public static final String COMPRESSION_LEVEL_CONFIG = "s3.compression.level";
   public static final int COMPRESSION_LEVEL_DEFAULT = Deflater.DEFAULT_COMPRESSION;
   private static final CompressionLevelValidator COMPRESSION_LEVEL_VALIDATOR =
@@ -165,6 +169,21 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
   public static final String BEHAVIOR_ON_NULL_VALUES_CONFIG = "behavior.on.null.values";
   public static final String BEHAVIOR_ON_NULL_VALUES_DEFAULT = OutputWriteBehavior.FAIL.toString();
 
+  public static final String REPORT_NULL_RECORDS_TO_DLQ = "report.null.values.to.dlq";
+  public static final boolean REPORT_NULL_RECORDS_TO_DLQ_DEFAULT = true;
+  public static final String REPORT_NULL_RECORDS_TO_DLQ_DOC =
+      "Determine whether to log records with null values to dlq. "
+          + "`errors.tolerance` should be set to 'all' for successfully writing into dlq";
+  public static final String REPORT_NULL_RECORDS_TO_DLQ_DISPLAY = "Report null value to dlq";
+
+  public static final String MAX_WRITE_DURATION = "max.write.duration.ms";
+  public static final long MAX_WRITE_DURATION_DEFAULT = Long.MAX_VALUE;
+  public static final String MAX_WRITE_DURATION_DOC = "The maximum duration that a task will "
+      + "spend in batching and writing to S3. If the write operation takes longer than this "
+      + "the task will voluntarily return from the put method. This prevents the consumer from "
+      + "being revoked from the group. It also mitigates (but does not eliminate) the risk of "
+      + "a zombie task to continue writing to S3 after it has been revoked.";
+
   /**
    * Maximum back-off time when retrying failed requests.
    */
@@ -175,6 +194,13 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
 
   public static final String S3_PATH_STYLE_ACCESS_ENABLED_CONFIG = "s3.path.style.access.enabled";
   public static final boolean S3_PATH_STYLE_ACCESS_ENABLED_DEFAULT = true;
+
+  public static final String DECIMAL_FORMAT_CONFIG = "json.decimal.format";
+  public static final String DECIMAL_FORMAT_DEFAULT = DecimalFormat.BASE64.name();
+  private static final String DECIMAL_FORMAT_DOC = "Controls which format json converter"
+      + " will serialize decimals in."
+      + " This value is case insensitive and can be either 'BASE64' (default) or 'NUMERIC'";
+  private static final String DECIMAL_FORMAT_DISPLAY = "Decimal Format";
 
   public static final String STORE_KAFKA_KEYS_CONFIG = "store.kafka.keys";
   public static final String STORE_KAFKA_HEADERS_CONFIG = "store.kafka.headers";
@@ -517,6 +543,20 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
       );
 
       configDef.define(
+          DECIMAL_FORMAT_CONFIG,
+          ConfigDef.Type.STRING,
+          DECIMAL_FORMAT_DEFAULT,
+          ConfigDef.CaseInsensitiveValidString.in(
+                  DecimalFormat.BASE64.name(), DecimalFormat.NUMERIC.name()),
+          Importance.MEDIUM,
+          DECIMAL_FORMAT_DOC,
+          group,
+          ++orderInGroup,
+          Width.MEDIUM,
+          DECIMAL_FORMAT_DISPLAY
+      );
+
+      configDef.define(
           S3_PART_RETRIES_CONFIG,
           Type.INT,
           S3_PART_RETRIES_DEFAULT,
@@ -664,6 +704,30 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
           "Behavior for null-valued records"
       );
 
+      configDef.define(
+          REPORT_NULL_RECORDS_TO_DLQ,
+          Type.BOOLEAN,
+          REPORT_NULL_RECORDS_TO_DLQ_DEFAULT,
+          Importance.LOW,
+          REPORT_NULL_RECORDS_TO_DLQ_DOC,
+          group,
+          ++orderInGroup,
+          Width.SHORT,
+          REPORT_NULL_RECORDS_TO_DLQ_DISPLAY
+      );
+
+      configDef.define(
+          MAX_WRITE_DURATION,
+          Type.LONG,
+          MAX_WRITE_DURATION_DEFAULT,
+          Importance.LOW,
+          MAX_WRITE_DURATION_DOC,
+          group,
+          ++orderInGroup,
+          Width.SHORT,
+          "Maximum write duration"
+      );
+
       // This is done to avoid aggressive schema based rotations resulting out of interleaving
       // of tombstones with regular records.
       configDef.define(
@@ -692,6 +756,18 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
           Width.LONG,
           "Schema Partition Affix Type",
           SCHEMA_PARTITION_AFFIX_TYPE_RECOMMENDER
+      );
+
+      configDef.define(
+          SEND_DIGEST_CONFIG,
+          Type.BOOLEAN,
+          SEND_DIGEST_DEFAULT,
+          Importance.LOW,
+          "Enable or disable sending MD5 digest with S3 multipart upload request.",
+          group,
+          ++orderInGroup,
+          Width.SHORT,
+          "S3 Send Upload Message Digest"
       );
     }
 
@@ -979,6 +1055,14 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
     return getInt(COMPRESSION_LEVEL_CONFIG);
   }
 
+  public boolean isSendDigestEnabled() {
+    return getBoolean(SEND_DIGEST_CONFIG);
+  }
+
+  public String getJsonDecimalFormat() {
+    return getString(DECIMAL_FORMAT_CONFIG);
+  }
+
   public CompressionCodecName parquetCompressionCodecName() {
     return "none".equalsIgnoreCase(getString(PARQUET_CODEC_CONFIG))
            ? CompressionCodecName.fromConf(null)
@@ -1137,14 +1221,18 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
         throw new ConfigException(
             name,
             region,
-            "Value must be one of: " + Utils.join(RegionUtils.getRegions(), ", ")
+            "Value must be one of: " + RegionUtils.getRegions().stream()
+                .map((Region::toString))
+                .collect(Collectors.joining(", "))
         );
       }
     }
 
     @Override
     public String toString() {
-      return "[" + Utils.join(RegionUtils.getRegions(), ", ") + "]";
+      return "[" + RegionUtils.getRegions().stream()
+          .map((Region::toString))
+          .collect(Collectors.joining(", ")) + "]";
     }
   }
 
@@ -1158,7 +1246,7 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
         TYPES_BY_NAME.put(compressionType.name, compressionType);
         names.add(compressionType.name);
       }
-      ALLOWED_VALUES = Utils.join(names, ", ");
+      ALLOWED_VALUES = String.join(", ", names);
     }
 
     @Override
@@ -1234,7 +1322,7 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
 
     @Override
     public String toString() {
-      return "[" + Utils.join(ALLOWED_VALUES, ", ") + "]";
+      return "[" + String.join(", ", ALLOWED_VALUES) + "]";
     }
   }
 
@@ -1248,7 +1336,7 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
         ACLS_BY_HEADER_VALUE.put(acl.toString(), acl);
         aclHeaderValues.add(acl.toString());
       }
-      ALLOWED_VALUES = Utils.join(aclHeaderValues, ", ");
+      ALLOWED_VALUES = String.join(", ", aclHeaderValues);
     }
 
     @Override
@@ -1362,6 +1450,10 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
 
   public String nullValueBehavior() {
     return getString(BEHAVIOR_ON_NULL_VALUES_CONFIG);
+  }
+
+  public boolean reportNullRecordsToDlq() {
+    return getBoolean(REPORT_NULL_RECORDS_TO_DLQ);
   }
 
   public enum IgnoreOrFailBehavior {

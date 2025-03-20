@@ -15,7 +15,16 @@
 
 package io.confluent.connect.s3.integration;
 
-import static io.confluent.connect.s3.S3SinkConnectorConfig.*;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.BEHAVIOR_ON_NULL_VALUES_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.KEYS_FORMAT_CLASS_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.S3_BUCKET_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.SEND_DIGEST_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.S3_PROXY_URL_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.STORE_KAFKA_HEADERS_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.STORE_KAFKA_KEYS_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.AWS_ACCESS_KEY_ID_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.AWS_SECRET_ACCESS_KEY_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.TOMBSTONE_ENCODED_PARTITION;
 import static io.confluent.connect.storage.StorageSinkConnectorConfig.FLUSH_SIZE_CONFIG;
 import static io.confluent.connect.storage.StorageSinkConnectorConfig.FORMAT_CLASS_CONFIG;
 import static org.apache.kafka.connect.runtime.ConnectorConfig.CONNECTOR_CLASS_CONFIG;
@@ -138,6 +147,30 @@ public class S3SinkConnectorIT extends BaseConnectorIT {
   public void testBasicRecordsWrittenJson() throws Throwable {
     //add test specific props
     props.put(FORMAT_CLASS_CONFIG, JsonFormat.class.getName());
+    testBasicRecordsWritten(JSON_EXTENSION, false);
+  }
+
+  @Test
+  public void testBasicRecordsWrittenWithDigestAvro() throws Throwable {
+    //add test specific props
+    props.put(FORMAT_CLASS_CONFIG, AvroFormat.class.getName());
+    props.put(SEND_DIGEST_CONFIG, "true");
+    testBasicRecordsWritten(AVRO_EXTENSION, false);
+  }
+
+  @Test
+  public void testBasicRecordsWrittenWithDigestParquet() throws Throwable {
+    //add test specific props
+    props.put(FORMAT_CLASS_CONFIG, ParquetFormat.class.getName());
+    props.put(SEND_DIGEST_CONFIG, "true");
+    testBasicRecordsWritten(PARQUET_EXTENSION, false);
+  }
+
+  @Test
+  public void testBasicRecordsWrittenWithDigestJson() throws Throwable {
+    //add test specific props
+    props.put(FORMAT_CLASS_CONFIG, JsonFormat.class.getName());
+    props.put(SEND_DIGEST_CONFIG, "true");
     testBasicRecordsWritten(JSON_EXTENSION, false);
   }
 
@@ -484,7 +517,7 @@ public class S3SinkConnectorIT extends BaseConnectorIT {
     // verify records in DLQ topic by consuming from topic and checking header messages
     int expectedDLQRecordCount = 3;
     ConsumerRecords<byte[], byte[]> dlqRecords =
-        connect.kafka().consume(2, CONSUME_MAX_DURATION_MS, DLQ_TOPIC_NAME);
+        connect.kafka().consume(expectedDLQRecordCount, CONSUME_MAX_DURATION_MS, DLQ_TOPIC_NAME);
     List<String> expectedErrors = Arrays.asList(
         "Key cannot be null for SinkRecord",
         "Skipping null value record",
