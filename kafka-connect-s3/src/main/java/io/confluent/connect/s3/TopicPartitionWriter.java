@@ -38,6 +38,8 @@ import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.avro.SchemaParseException;
+import org.apache.parquet.schema.InvalidSchemaException;
 
 import java.util.Comparator;
 import java.util.HashMap;
@@ -106,6 +108,11 @@ public class TopicPartitionWriter {
   private final S3SinkConnectorConfig connectorConfig;
   private static final Time SYSTEM_TIME = new SystemTime();
   private ErrantRecordReporter reporter;
+
+  private final long maxWriteDurationMs;
+  private long writeDeadline;
+
+  boolean isPaused = false;
 
   private final FileRotationTracker fileRotationTracker;
   private Optional<FileEventProvider> fileCallback = Optional.empty();
@@ -190,6 +197,9 @@ public class TopicPartitionWriter {
         + "d";
     fileRotationTracker = new FileRotationTracker();
 
+    maxWriteDurationMs = connectorConfig.getLong(S3SinkConnectorConfig.MAX_WRITE_DURATION);
+    writeDeadline = Long.MAX_VALUE;
+
     // Initialize scheduled rotation timer if applicable
     setNextScheduledRotation();
   }
@@ -222,7 +232,8 @@ public class TopicPartitionWriter {
 
     resetExpiredScheduledRotationIfNoPendingRecords(now);
 
-    while (!buffer.isEmpty()) {
+
+    while (!buffer.isEmpty() && !isWriteDeadlineExceeded()) {
       try {
         executeState(now);
       } catch (IllegalWorkerStateException e) {
@@ -236,7 +247,39 @@ public class TopicPartitionWriter {
         }
       }
     }
-    commitOnTimeIfNoData(now);
+    if (!isWriteDeadlineExceeded()) {
+      commitOnTimeIfNoData(now);
+    }
+    pauseOrResumeOnBuffer();
+
+  }
+
+  private void pauseOrResumeOnBuffer() {
+    // if the deadline exceeds before all the records in buffer are processed, pause the writer
+    // if the buffered records are greater than flush size, this is to ensure that we don't keep
+    // getting messages from the consumer while we are still processing the buffer which can lead
+    // to memory issues
+    if (buffer.size() >= Math.max(flushSize, 1)) {
+      pause();
+    } else if (isPaused) {
+      resume();
+    }
+  }
+
+  public void setWriteDeadline(long currentTimeMs) {
+    writeDeadline = currentTimeMs + maxWriteDurationMs;
+    //prevent overflow
+    if (writeDeadline < 0) {
+      writeDeadline = Long.MAX_VALUE;
+    }
+  }
+
+  protected boolean isWriteDeadlineExceeded() {
+    boolean isWriteDeadlineExceeded = time.milliseconds() > writeDeadline;
+    if (isWriteDeadlineExceeded) {
+      log.info("Deadline exceeded");
+    }
+    return isWriteDeadlineExceeded;
   }
 
   @SuppressWarnings("fallthrough")
@@ -268,7 +311,16 @@ public class TopicPartitionWriter {
           }
         }
         Schema currentValueSchema = currentSchemas.get(encodedPartition);
-        if (currentValueSchema == null) {
+        // Rotation will happen for:
+        // 1. non-tombstone followed by tombstone
+        // 2. tombstone (valueSchema is null) followed by non-tombstone
+        boolean shouldRotateForNullSchema = currentSchemas.containsKey(encodedPartition)
+                && (currentValueSchema == null ^ valueSchema == null);
+
+        // TB: Tombstone, NTB: Non-Tombstone, -> : followed by
+        // Cases handled: TB -> TB, TB -> NTB, NTB -> TB
+        // NTB -> NTB is handled by schema compatibility checks
+        if (currentValueSchema == null || valueSchema == null) {
           currentSchemas.put(encodedPartition, valueSchema);
           currentValueSchema = valueSchema;
         }
@@ -278,12 +330,17 @@ public class TopicPartitionWriter {
             currentValueSchema,
             valueSchema,
             encodedPartition,
-            now
+            now, shouldRotateForNullSchema
         )) {
           break;
         }
         // fallthrough
       case SHOULD_ROTATE:
+        if (isWriteDeadlineExceeded()) {
+          // note: this is a best-effort attempt to rotate the file before the deadline
+          // this check can pass and the deadline gets exceeded before the rotation is complete
+          break;
+        }
         commitFiles();
         nextState();
         // fallthrough
@@ -305,8 +362,16 @@ public class TopicPartitionWriter {
       Schema currentValueSchema,
       Schema valueSchema,
       String encodedPartition,
-      long now
+      long now,
+      boolean shouldRotateForNullSchema
   ) {
+
+    if (shouldRotateForNullSchema) {
+      fileRotationTracker.incrementRotationByNullSchemaCount(encodedPartition);
+      nextState();
+      return true;
+    }
+
     // rotateOnTime is safe to go before writeRecord, because it is acceptable
     // even for a faulty record to trigger time-based rotation if it applies
     if (rotateOnTime(encodedPartition, currentTimestamp, now)) {
@@ -334,7 +399,7 @@ public class TopicPartitionWriter {
     }
 
     SinkRecord projectedRecord = compatibility.project(record, null, currentValueSchema);
-    boolean validRecord = writeRecord(projectedRecord, encodedPartition);
+    boolean validRecord = writeRecord(projectedRecord, encodedPartition, record);
     buffer.poll();
     if (!validRecord) {
       // skip the faulty record and don't rotate
@@ -442,7 +507,6 @@ public class TopicPartitionWriter {
         && timestampExtractor != null
         && (
         recordTimestamp - baseRecordTimestamp >= rotateIntervalMs
-            || !encodedPartition.equals(currentEncodedPartition)
     );
 
     log.trace(
@@ -526,11 +590,13 @@ public class TopicPartitionWriter {
   private void pause() {
     log.trace("Pausing writer for topic-partition '{}'", tp);
     context.pause(tp);
+    isPaused = true;
   }
 
   private void resume() {
     log.trace("Resuming writer for topic-partition '{}'", tp);
     context.resume(tp);
+    isPaused = false;
   }
 
   private RecordWriter newWriter(SinkRecord record, String encodedPartition)
@@ -576,9 +642,10 @@ public class TopicPartitionWriter {
     return fileKey(topicsDir, dirPrefix, name);
   }
 
-  private boolean writeRecord(SinkRecord record, String encodedPartition) {
+  private boolean writeRecord(SinkRecord projectedRecord, String encodedPartition,
+                              SinkRecord originalRecord) {
     RecordWriter writer = writers.get(encodedPartition);
-    long currentOffsetIfSuccessful = record.kafkaOffset();
+    long currentOffsetIfSuccessful = projectedRecord.kafkaOffset();
     boolean shouldRemoveWriter = false;
     boolean shouldRemoveStartOffset = false;
     boolean shouldRemoveCommitFilename = false;
@@ -596,11 +663,11 @@ public class TopicPartitionWriter {
         if (!commitFiles.containsKey(encodedPartition)) {
           shouldRemoveCommitFilename = true;
         }
-        writer = newWriter(record, encodedPartition);
+        writer = newWriter(projectedRecord, encodedPartition);
         shouldRemoveWriter = true;
       }
-      writer.write(record);
-    } catch (DataException e) {
+      writer.write(projectedRecord);
+    } catch (DataException | SchemaParseException | InvalidSchemaException e) {
       if (reporter != null) {
         if (shouldRemoveStartOffset) {
           startOffsets.remove(encodedPartition);
@@ -611,7 +678,7 @@ public class TopicPartitionWriter {
         if (shouldRemoveCommitFilename) {
           commitFiles.remove(encodedPartition);
         }
-        reporter.report(record, e);
+        reporter.report(originalRecord, e);
         log.warn("Errant record written to DLQ due to: {}", e.getMessage());
         return false;
       } else {
@@ -620,7 +687,7 @@ public class TopicPartitionWriter {
     }
 
     currentEncodedPartition = encodedPartition;
-    currentOffset = record.kafkaOffset();
+    currentOffset = projectedRecord.kafkaOffset();
     if (shouldRemoveStartOffset) {
       log.trace(
           "Setting writer's start offset for '{}' to {}",

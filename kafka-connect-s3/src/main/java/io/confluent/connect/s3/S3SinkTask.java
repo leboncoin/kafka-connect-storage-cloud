@@ -34,8 +34,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -158,6 +161,9 @@ public class S3SinkTask extends SinkTask {
     for (TopicPartition tp : partitions) {
       topicPartitionWriters.put(tp, newTopicPartitionWriter(tp));
     }
+    log.info("Assigned topic partitions: {}",
+        topicPartitionWriters.keySet()
+    );
   }
   private void initFileEventProvider() {
     // Initialize fileEvent if enabled
@@ -252,13 +258,15 @@ public class S3SinkTask extends SinkTask {
 
   @Override
   public void put(Collection<SinkRecord> records) throws ConnectException {
+    long putStartTime = time.milliseconds();
+
     for (SinkRecord record : records) {
       String topic = record.topic();
       int partition = record.kafkaPartition();
       TopicPartition tp = new TopicPartition(topic, partition);
 
       if (maybeSkipOnNullValue(record)) {
-        if (reporter != null) {
+        if (reporter != null && connectorConfig.reportNullRecordsToDlq()) {
           reporter.report(record, new DataException("Skipping null value record."));
         }
         continue;
@@ -269,9 +277,15 @@ public class S3SinkTask extends SinkTask {
       log.debug("Read {} records from Kafka", records.size());
     }
 
-    for (TopicPartition tp : topicPartitionWriters.keySet()) {
+    //shuffle the topic partitions as otherwise the last topic partition will
+    //always get the least amount of time to write
+    List<TopicPartition> shuffledList = new ArrayList<>(topicPartitionWriters.keySet());
+    Collections.shuffle(shuffledList);
+
+    for (TopicPartition tp : shuffledList) {
       TopicPartitionWriter writer = topicPartitionWriters.get(tp);
       try {
+        writer.setWriteDeadline(putStartTime);
         writer.write();
         if (log.isDebugEnabled()) {
           log.debug("TopicPartition: {}, SchemaCompatibility:{}, FileRotations: {}",
