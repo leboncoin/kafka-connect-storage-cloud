@@ -168,10 +168,8 @@ public abstract class BaseConnectorIT {
   }
 
   protected void startConnect() {
-    Map<String, String> workerProps = new HashMap<>();
-    workerProps.put("plugin.discovery","hybrid_warn");
     connect = new EmbeddedConnectCluster.Builder()
-        .name("s3-connect-cluster").workerProps(workerProps)
+        .name("s3-connect-cluster")
         .build();
 
     // start the clusters

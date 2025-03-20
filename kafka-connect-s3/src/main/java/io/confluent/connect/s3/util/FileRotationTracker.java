@@ -41,8 +41,6 @@ public final class FileRotationTracker {
 
     int rotationByDiffVersion = 0;
 
-    int rotationByNullSchema = 0;
-
     public void incrementRotationBySchemaChangeCount(
         SchemaIncompatibilityType schemaIncompatibilityType) {
       switch (schemaIncompatibilityType) {
@@ -76,10 +74,6 @@ public final class FileRotationTracker {
     public void incrementRotationByScheduledRotationIntervalCount() {
       rotationByScheduledRotationInterval++;
     }
-
-    public void incrementRotationByNullSchemaCount() {
-      rotationByNullSchema++;
-    }
   }
 
   public void incrementRotationBySchemaChangeCount(String outputPartition,
@@ -111,13 +105,6 @@ public final class FileRotationTracker {
     metrics.get(outputPartition).incrementRotationByScheduledRotationIntervalCount();
   }
 
-  public void incrementRotationByNullSchemaCount(String outputPartition) {
-    if (!metrics.containsKey(outputPartition)) {
-      metrics.put(outputPartition, new RotationMetrics());
-    }
-    metrics.get(outputPartition).incrementRotationByNullSchemaCount();
-  }
-
   public void clear() {
     metrics.clear();
   }
@@ -145,8 +132,6 @@ public final class FileRotationTracker {
       sb.append(rotationMetrics.rotationByDiffVersion);
       sb.append(", RotationByDiffParams: ");
       sb.append(rotationMetrics.rotationByDiffParams);
-      sb.append(", RotationByNullSchema: ");
-      sb.append(rotationMetrics.rotationByNullSchema);
       sb.append("\n");
     }
     return sb.toString();
