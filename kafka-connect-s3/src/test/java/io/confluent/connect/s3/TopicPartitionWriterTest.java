@@ -66,6 +66,7 @@ import java.util.LinkedList;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 import io.confluent.common.utils.MockTime;
 import io.confluent.common.utils.Time;
@@ -269,6 +270,106 @@ public class TopicPartitionWriterTest extends TestWithMockedS3 {
     expectedFiles.add(FileUtils.fileKeyToCommit(topicsDir, dirPrefix, TOPIC_PARTITION, 3, extension, "%02d"));
     expectedFiles.add(FileUtils.fileKeyToCommit(topicsDir, dirPrefix, TOPIC_PARTITION, 6, extension, "%02d"));
     verify(expectedFiles, 3, schema, records);
+  }
+
+  @Test
+  public void testDefaultFilenameFormatUsesTopicPartitionAndOffset() throws Exception {
+    localProps.put(S3SinkConnectorConfig.S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        S3SinkConnectorConfig.S3_OBJECT_FILENAME_FORMAT_DEFAULT);
+    setUp();
+
+    Partitioner<?> partitioner = new DefaultPartitioner<>();
+    partitioner.configure(parsedConfig);
+    TopicPartitionWriter topicPartitionWriter = new TopicPartitionWriter(
+        TOPIC_PARTITION, storage, writerProvider, partitioner, connectorConfig, context, null);
+
+    Schema schema = createSchema();
+    List<Struct> records = createRecordBatch(schema, 3);
+    Collection<SinkRecord> sinkRecords = createSinkRecords(records, "key", schema);
+    for (SinkRecord record : sinkRecords) {
+      topicPartitionWriter.buffer(record);
+    }
+
+    topicPartitionWriter.write();
+    topicPartitionWriter.close();
+
+    List<S3ObjectSummary> summaries = listObjects(S3_TEST_BUCKET_NAME, null, s3);
+    assertEquals(1, summaries.size());
+
+    String baseName = fileNameWithoutExtension(summaries.get(0).getKey());
+    String fileDelim = connectorConfig.getString(StorageCommonConfig.FILE_DELIM_CONFIG);
+    String[] parts = baseName.split(Pattern.quote(fileDelim));
+    assertEquals(3, parts.length);
+    assertEquals(TOPIC, parts[0]);
+    assertEquals(Integer.toString(PARTITION), parts[1]);
+    assertEquals(String.format(ZERO_PAD_FMT, 0), parts[2]);
+  }
+
+  @Test
+  public void testFilenameFormatSupportsRandomIdPlaceholder() throws Exception {
+    localProps.put(S3SinkConnectorConfig.S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        S3SinkConnectorConfig.S3_OBJECT_FILENAME_FORMAT_DEFAULT + "${fileDelim}${randomUuid}");
+    setUp();
+
+    Partitioner<?> partitioner = new DefaultPartitioner<>();
+    partitioner.configure(parsedConfig);
+    TopicPartitionWriter topicPartitionWriter = new TopicPartitionWriter(
+        TOPIC_PARTITION, storage, writerProvider, partitioner, connectorConfig, context, null);
+
+    Schema schema = createSchema();
+    List<Struct> records = createRecordBatch(schema, 3);
+    Collection<SinkRecord> sinkRecords = createSinkRecords(records, "key", schema);
+    for (SinkRecord record : sinkRecords) {
+      topicPartitionWriter.buffer(record);
+    }
+
+    topicPartitionWriter.write();
+    topicPartitionWriter.close();
+
+    List<S3ObjectSummary> summaries = listObjects(S3_TEST_BUCKET_NAME, null, s3);
+    assertEquals(1, summaries.size());
+
+    String baseName = fileNameWithoutExtension(summaries.get(0).getKey());
+    String fileDelim = connectorConfig.getString(StorageCommonConfig.FILE_DELIM_CONFIG);
+    String[] parts = baseName.split(Pattern.quote(fileDelim));
+    assertEquals(4, parts.length);
+    assertEquals(TOPIC, parts[0]);
+    assertEquals(Integer.toString(PARTITION), parts[1]);
+    assertEquals(String.format(ZERO_PAD_FMT, 0), parts[2]);
+    assertTrue(parts[3].matches("[0-9a-f]{32}"));
+  }
+
+  @Test
+  public void testCustomFilenameFormatUsesPartitionPlaceholder() throws Exception {
+    localProps.put(S3SinkConnectorConfig.S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        "${partition}${fileDelim}${startOffset}${fileDelim}${randomUuid}");
+    setUp();
+
+    Partitioner<?> partitioner = new DefaultPartitioner<>();
+    partitioner.configure(parsedConfig);
+    TopicPartitionWriter topicPartitionWriter = new TopicPartitionWriter(
+        TOPIC_PARTITION, storage, writerProvider, partitioner, connectorConfig, context, null);
+
+    Schema schema = createSchema();
+    List<Struct> records = createRecordBatch(schema, 3);
+    Collection<SinkRecord> sinkRecords = createSinkRecords(records, "key", schema);
+    for (SinkRecord record : sinkRecords) {
+      topicPartitionWriter.buffer(record);
+    }
+
+    topicPartitionWriter.write();
+    topicPartitionWriter.close();
+
+    List<S3ObjectSummary> summaries = listObjects(S3_TEST_BUCKET_NAME, null, s3);
+    assertEquals(1, summaries.size());
+
+    String baseName = fileNameWithoutExtension(summaries.get(0).getKey());
+    String fileDelim = connectorConfig.getString(StorageCommonConfig.FILE_DELIM_CONFIG);
+    String[] parts = baseName.split(Pattern.quote(fileDelim));
+    assertEquals(3, parts.length);
+    assertEquals("partition=" + PARTITION, parts[0]);
+    assertEquals(String.format(ZERO_PAD_FMT, 0), parts[1]);
+    assertTrue(parts[2].matches("[0-9a-f]{32}"));
   }
 
   @Test
@@ -2055,6 +2156,16 @@ public class TopicPartitionWriterTest extends TestWithMockedS3 {
         assertEquals(expectedRecord, avroRecord);
       }
     }
+  }
+
+  private String fileNameWithoutExtension(String s3Key) {
+    String dirDelimConfig = connectorConfig.getString(StorageCommonConfig.DIRECTORY_DELIM_CONFIG);
+    int lastDirIdx = s3Key.lastIndexOf(dirDelimConfig);
+    String fileName = lastDirIdx >= 0 ? s3Key.substring(lastDirIdx + dirDelimConfig.length()) : s3Key;
+    if (fileName.endsWith(extension)) {
+      return fileName.substring(0, fileName.length() - extension.length());
+    }
+    return fileName;
   }
 
   private void verifyWithJsonOutput(

@@ -57,6 +57,7 @@ import static io.confluent.connect.s3.S3SinkConnectorConfig.DECIMAL_FORMAT_DEFAU
 import static io.confluent.connect.s3.S3SinkConnectorConfig.HEADERS_FORMAT_CLASS_CONFIG;
 import static io.confluent.connect.s3.S3SinkConnectorConfig.KEYS_FORMAT_CLASS_CONFIG;
 import static io.confluent.connect.s3.S3SinkConnectorConfig.SCHEMA_PARTITION_AFFIX_TYPE_CONFIG;
+import static io.confluent.connect.s3.S3SinkConnectorConfig.S3_OBJECT_FILENAME_FORMAT_CONFIG;
 
 import static io.confluent.connect.s3.S3SinkConnectorConfig.SEND_DIGEST_CONFIG;
 import static org.junit.Assert.assertEquals;
@@ -151,6 +152,64 @@ public class S3SinkConnectorConfigTest extends S3SinkConnectorTestBase {
     connectorConfig = new S3SinkConnectorConfig(properties);
     assertEquals(true, connectorConfig.get(AvroDataConfig.ENHANCED_AVRO_SCHEMA_SUPPORT_CONFIG));
     assertEquals(false, connectorConfig.get(AvroDataConfig.CONNECT_META_DATA_CONFIG));
+  }
+
+  @Test
+  public void testFilenameFormatValidatorAcceptsAllowedPlaceholders() {
+    properties.put(
+        S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        "custom${fileDelim}${topic}${fileDelim}${randomId}"
+    );
+    connectorConfig = new S3SinkConnectorConfig(properties);
+    assertEquals(
+        "custom${fileDelim}${topic}${fileDelim}${randomId}",
+        connectorConfig.getString(S3_OBJECT_FILENAME_FORMAT_CONFIG)
+    );
+  }
+
+  @Test
+  public void testFilenameFormatValidatorRejectsUnknownPlaceholder() {
+    properties.put(
+        S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        "${topic}${fileDelim}${unknown}${fileDelim}${startOffset}"
+    );
+    assertThrows(ConfigException.class, () -> new S3SinkConnectorConfig(properties));
+  }
+
+  @Test
+  public void testFilenameFormatValidatorRejectsMissingClosingBrace() {
+    properties.put(
+        S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        "${topic${fileDelim}${startOffset}"
+    );
+    assertThrows(ConfigException.class, () -> new S3SinkConnectorConfig(properties));
+  }
+
+  @Test
+  public void testFilenameFormatValidatorRejectsBraceWithoutDollar() {
+    properties.put(
+        S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        "{topic}${fileDelim}${startOffset}"
+    );
+    assertThrows(ConfigException.class, () -> new S3SinkConnectorConfig(properties));
+  }
+
+  @Test
+  public void testFilenameFormatValidatorRejectsDanglingDollar() {
+    properties.put(
+        S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        "$topic${fileDelim}${startOffset}"
+    );
+    assertThrows(ConfigException.class, () -> new S3SinkConnectorConfig(properties));
+  }
+
+  @Test
+  public void testFilenameFormatValidatorRejectsDoubleDollar() {
+    properties.put(
+        S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        "$${topic}${fileDelim}${startOffset}"
+    );
+    assertThrows(ConfigException.class, () -> new S3SinkConnectorConfig(properties));
   }
 
   @Test
@@ -655,4 +714,3 @@ public class S3SinkConnectorConfigTest extends S3SinkConnectorTestBase {
     new S3SinkConnectorConfig(properties);
   }
 }
-

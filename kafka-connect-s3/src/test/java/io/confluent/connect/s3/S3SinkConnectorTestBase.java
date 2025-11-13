@@ -78,6 +78,10 @@ public class S3SinkConnectorTestBase extends StorageSinkTestBase {
     props.put(PartitionerConfig.PATH_FORMAT_CONFIG, "'year'=YYYY_'month'=MM_'day'=dd_'hour'=HH");
     props.put(PartitionerConfig.LOCALE_CONFIG, "en");
     props.put(PartitionerConfig.TIMEZONE_CONFIG, "America/Los_Angeles");
+    props.put(
+        S3SinkConnectorConfig.S3_OBJECT_FILENAME_FORMAT_CONFIG,
+        "${topic}${fileDelim}${kafkaPartition}${fileDelim}${startOffset}"
+    );
     return props;
   }
 
@@ -112,4 +116,3 @@ public class S3SinkConnectorTestBase extends StorageSinkTestBase {
   }
 
 }
-
