@@ -28,6 +28,7 @@ import com.amazonaws.services.s3.model.SSEAlgorithm;
 import io.confluent.connect.s3.file.FileEventProvider;
 import io.confluent.connect.s3.file.KafkaFileEventProvider;
 import io.confluent.connect.storage.common.util.StringUtils;
+import org.apache.commons.text.StringSubstitutor;
 import org.apache.kafka.common.Configurable;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigDef;
@@ -52,6 +53,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -86,6 +89,25 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
 
   public static final String S3_OBJECT_TAGGING_CONFIG = "s3.object.tagging";
   public static final boolean S3_OBJECT_TAGGING_DEFAULT = false;
+
+  public static final String S3_OBJECT_FILENAME_FORMAT_CONFIG = "s3.object.filename.format";
+  public static final String S3_OBJECT_FILENAME_FORMAT_DEFAULT = "${topic}${fileDelim}${kafkaPartition}${fileDelim}${startOffset}";
+  public static final String S3_OBJECT_FILENAME_FORMAT_DOC = "The object filename format."
+    + " Variables available for interpolation are: "
+    + " ${topic}, ${partition}, ${kafkaPartition}, ${startOffset}, ${randomId}."
+    + " ${randomId} resolves to a hyphen-less, lowercase UUID (32 hexadecimal characters)."
+    + " Also ${fileDelim} which resolves to the value of 'file.delim' property, '+' by default.";
+
+  private static final Set<String> S3_OBJECT_FILENAME_ALLOWED_VARIABLES = Collections.unmodifiableSet(
+      new HashSet<>(Arrays.asList(
+          "topic",
+          "partition",
+          "kafkaPartition",
+          "startOffset",
+          "randomId",
+          "fileDelim"
+      ))
+  );
 
   public static final String S3_OBJECT_BEHAVIOR_ON_TAGGING_ERROR_CONFIG =
           "s3.object.behavior.on.tagging.error";
@@ -349,6 +371,19 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
           ++orderInGroup,
           Width.LONG,
           "S3 Object Tagging"
+      );
+
+      configDef.define(
+          S3_OBJECT_FILENAME_FORMAT_CONFIG,
+          Type.STRING,
+          S3_OBJECT_FILENAME_FORMAT_DEFAULT,
+          new S3ObjectFilenameFormatValidator(),
+          Importance.LOW,
+          S3_OBJECT_FILENAME_FORMAT_DOC,
+          group,
+          ++orderInGroup,
+          Width.LONG,
+          "S3 Object filename format"
       );
 
       configDef.define(
@@ -1444,6 +1479,100 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
     for (ConfigDef.ConfigKey key : other.configKeys().values()) {
       if (skip != null && !skip.contains(key.name)) {
         container.define(key);
+      }
+    }
+  }
+
+  static class S3ObjectFilenameFormatValidator implements Validator {
+    private static final Pattern STRAY_BRACE_PATTERN = Pattern.compile("(?<!\\$)\\{([^{}]+)}");
+
+    @Override
+    public void ensureValid(String name, Object value) {
+      Map<String, String> samples = new HashMap<>();
+      samples.put("topic", "sample-topic");
+      samples.put("partition", "partition=0");
+      samples.put("kafkaPartition", "0");
+      samples.put("startOffset", "0000000000");
+      samples.put("randomId", "abcdef0123456789abcdef0123456789");
+      samples.put("fileDelim", "+");
+
+      if (!(value instanceof String)) {
+        throw new ConfigException(name, value, "Value must be a string");
+      }
+      String template = (String) value;
+
+      validateDollarUsage(name, value, template);
+      validatePlaceholders(name, value, template);
+      rejectStrayBraces(name, value, template);
+
+      StringSubstitutor substitutor = new StringSubstitutor(samples);
+      substitutor.setEnableUndefinedVariableException(true);
+
+      try {
+        substitutor.replace(template);
+      } catch (IllegalArgumentException e) {
+        throw new ConfigException(name, value, "Invalid filename format: " + e.getMessage());
+      }
+    }
+
+    @Override
+    public String toString() {
+      return "A template containing placeholders ${topic}, ${partition}, ${kafkaPartition}, "
+          + "${startOffset}, ${randomId}, or ${fileDelim}";
+    }
+
+    private void validateDollarUsage(String name, Object value, String template) {
+      int idx = template.indexOf('$');
+      while (idx >= 0) {
+        if (idx == template.length() - 1) {
+          throw new ConfigException(name, value, "Dangling '$' at end of template");
+        }
+        char next = template.charAt(idx + 1);
+        if (next == '$') {
+          throw new ConfigException(name, value, "Double '$' is not allowed. Use placeholders only");
+        }
+        if (next != '{') {
+          throw new ConfigException(name, value, "'$' must be followed by '{' to start a placeholder");
+        }
+        idx = template.indexOf('$', idx + 1);
+      }
+    }
+
+    private void validatePlaceholders(String name, Object value, String template) {
+      int start = template.indexOf("${");
+      while (start >= 0) {
+        int end = template.indexOf('}', start + 2);
+        if (end < 0) {
+          throw new ConfigException(
+              name,
+              value,
+              String.format("Missing closing '}' for placeholder starting at index %d", start)
+          );
+        }
+        String variable = template.substring(start + 2, end);
+        if (!S3_OBJECT_FILENAME_ALLOWED_VARIABLES.contains(variable)) {
+          throw new ConfigException(
+              name,
+              value,
+              String.format(
+                  "Unknown placeholder '%s'. Allowed placeholders: %s",
+                  variable,
+                  S3_OBJECT_FILENAME_ALLOWED_VARIABLES
+              )
+          );
+        }
+        start = template.indexOf("${", end + 1);
+      }
+    }
+
+    private void rejectStrayBraces(String name, Object value, String template) {
+      Matcher strayBrace = STRAY_BRACE_PATTERN.matcher(template);
+      if (strayBrace.find()) {
+        throw new ConfigException(
+            name,
+            value,
+            String.format("Brace group '{%s}' must be prefixed with '$'", strayBrace.group(1))
+        );
       }
     }
   }
