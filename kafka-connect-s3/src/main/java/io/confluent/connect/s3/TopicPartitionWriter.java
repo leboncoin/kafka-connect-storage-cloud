@@ -16,7 +16,6 @@
 package io.confluent.connect.s3;
 
 import com.amazonaws.SdkClientException;
-import io.confluent.connect.avro.AvroData;
 import io.confluent.connect.s3.file.FileEventProvider;
 import io.confluent.connect.s3.storage.S3Storage;
 import io.confluent.connect.s3.util.FileRotationTracker;
@@ -47,6 +46,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
+import java.util.UUID;
 
 import io.confluent.common.utils.SystemTime;
 import io.confluent.common.utils.Time;
@@ -61,6 +61,7 @@ import io.confluent.connect.storage.partitioner.TimeBasedPartitioner;
 import io.confluent.connect.storage.partitioner.TimestampExtractor;
 import io.confluent.connect.storage.schema.StorageSchemaCompatibility;
 import io.confluent.connect.storage.util.DateTimeUtils;
+import org.apache.commons.text.StringSubstitutor;
 
 import static io.confluent.connect.s3.S3SinkConnectorConfig.S3_PART_RETRIES_CONFIG;
 import static io.confluent.connect.s3.S3SinkConnectorConfig.S3_RETRY_BACKOFF_CONFIG;
@@ -103,6 +104,7 @@ public class TopicPartitionWriter {
   private final String zeroPadOffsetFormat;
   private final String dirDelim;
   private final String fileDelim;
+  private final String objectFilenameFormat;
   private final Time time;
   private DateTimeZone timeZone;
   private final S3SinkConnectorConfig connectorConfig;
@@ -191,6 +193,9 @@ public class TopicPartitionWriter {
     currentOffset = -1L;
     dirDelim = connectorConfig.getString(StorageCommonConfig.DIRECTORY_DELIM_CONFIG);
     fileDelim = connectorConfig.getString(StorageCommonConfig.FILE_DELIM_CONFIG);
+    objectFilenameFormat = connectorConfig.getString(
+        S3SinkConnectorConfig.S3_OBJECT_FILENAME_FORMAT_CONFIG
+    );
     extension = writerProvider.getExtension();
     zeroPadOffsetFormat = "%0"
         + connectorConfig.getInt(S3SinkConnectorConfig.FILENAME_OFFSET_ZERO_PAD_WIDTH_CONFIG)
@@ -619,7 +624,7 @@ public class TopicPartitionWriter {
     } else {
       long startOffset = startOffsets.get(encodedPartition);
       String prefix = getDirectoryPrefix(encodedPartition);
-      commitFile = fileKeyToCommit(prefix, startOffset);
+      commitFile = fileKeyToCommit(prefix, startOffset, encodedPartition);
       commitFiles.put(encodedPartition, commitFile);
     }
     return commitFile;
@@ -632,14 +637,26 @@ public class TopicPartitionWriter {
         : suffix;
   }
 
-  private String fileKeyToCommit(String dirPrefix, long startOffset) {
-    String name = tp.topic()
-        + fileDelim
-        + tp.partition()
-        + fileDelim
-        + String.format(zeroPadOffsetFormat, startOffset)
-        + extension;
+  private String fileKeyToCommit(String dirPrefix, long startOffset, String encodedPartition) {
+    String name = buildObjectName(encodedPartition, startOffset);
     return fileKey(topicsDir, dirPrefix, name);
+  }
+
+  private String buildObjectName(String encodedPartition, long startOffset) {
+    Map<String, String> variables = new HashMap<>();
+    variables.put("topic", tp.topic());
+    variables.put("partition", encodedPartition);
+    variables.put("kafkaPartition", Integer.toString(tp.partition()));
+    variables.put("startOffset", String.format(zeroPadOffsetFormat, startOffset));
+    variables.put("fileDelim", fileDelim);
+    variables.put("randomUuid", generateRandomUUid());
+
+    String resolved = new StringSubstitutor(variables).replace(objectFilenameFormat);
+    return resolved + extension;
+  }
+
+  private String generateRandomUUid() {
+    return UUID.randomUUID().toString().replace("-", "");
   }
 
   private boolean writeRecord(SinkRecord projectedRecord, String encodedPartition,
