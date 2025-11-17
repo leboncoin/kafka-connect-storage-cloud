@@ -94,8 +94,8 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
   public static final String S3_OBJECT_FILENAME_FORMAT_DEFAULT = "${topic}${fileDelim}${kafkaPartition}${fileDelim}${startOffset}";
   public static final String S3_OBJECT_FILENAME_FORMAT_DOC = "The object filename format."
     + " Variables available for interpolation are: "
-    + " ${topic}, ${partition}, ${kafkaPartition}, ${startOffset}, ${randomId}."
-    + " ${randomId} resolves to a hyphen-less, lowercase UUID (32 hexadecimal characters)."
+    + " ${topic}, ${partition}, ${kafkaPartition}, ${startOffset}, ${randomUuid}."
+    + " ${randomUuid} resolves to a hyphen-less, lowercase UUID (32 hexadecimal characters)."
     + " Also ${fileDelim} which resolves to the value of 'file.delim' property, '+' by default.";
 
   private static final Set<String> S3_OBJECT_FILENAME_ALLOWED_VARIABLES = Collections.unmodifiableSet(
@@ -104,7 +104,7 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
           "partition",
           "kafkaPartition",
           "startOffset",
-          "randomId",
+          "randomUuid",
           "fileDelim"
       ))
   );
@@ -1493,7 +1493,7 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
       samples.put("partition", "partition=0");
       samples.put("kafkaPartition", "0");
       samples.put("startOffset", "0000000000");
-      samples.put("randomId", "abcdef0123456789abcdef0123456789");
+      samples.put("randomUuid", "abcdef0123456789abcdef0123456789");
       samples.put("fileDelim", "+");
 
       if (!(value instanceof String)) {
@@ -1518,7 +1518,7 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
     @Override
     public String toString() {
       return "A template containing placeholders ${topic}, ${partition}, ${kafkaPartition}, "
-          + "${startOffset}, ${randomId}, or ${fileDelim}";
+          + "${startOffset}, ${randomUuid}, or ${fileDelim}";
     }
 
     private void validateDollarUsage(String name, Object value, String template) {
