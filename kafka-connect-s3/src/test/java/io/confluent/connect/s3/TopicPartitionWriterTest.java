@@ -77,6 +77,7 @@ import io.confluent.connect.s3.util.FileUtils;
 import io.confluent.connect.s3.util.TimeUtils;
 import io.confluent.connect.storage.common.StorageCommonConfig;
 import io.confluent.connect.storage.format.Format;
+import io.confluent.connect.storage.format.RecordWriter;
 import io.confluent.connect.storage.format.RecordWriterProvider;
 import io.confluent.connect.storage.partitioner.DailyPartitioner;
 import io.confluent.connect.storage.partitioner.DefaultPartitioner;
@@ -1862,6 +1863,122 @@ public class TopicPartitionWriterTest extends TestWithMockedS3 {
     );
   }
 
+  @Test
+  public void testMaxConcurrentPartitionWriterFlushesWhenLimitReached() throws Exception {
+    localProps.put(S3SinkConnectorConfig.FLUSH_SIZE_CONFIG, "1000");
+    localProps.put(S3SinkConnectorConfig.MAX_CONCURRENT_PARTITION_WRITER_CONFIG, "1");
+    setUp();
+
+    Partitioner<?> partitioner = new FieldPartitioner<>();
+    String field = "field";
+    parsedConfig.put(PARTITION_FIELD_NAME_CONFIG, Collections.singletonList(field));
+    partitioner.configure(parsedConfig);
+
+    SinkTaskContext mockContext = mock(SinkTaskContext.class);
+    TrackingRecordWriterProvider trackingWriterProvider = new TrackingRecordWriterProvider();
+    TopicPartitionWriter topicPartitionWriter = new TopicPartitionWriter(
+        TOPIC_PARTITION, storage, trackingWriterProvider, partitioner, connectorConfig, mockContext, null
+    );
+
+    Schema schema = SchemaBuilder.struct().field(field, Schema.STRING_SCHEMA).build();
+    Struct recordA = new Struct(schema).put(field, "a");
+    Struct recordB = new Struct(schema).put(field, "b");
+    topicPartitionWriter.buffer(
+        new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, "keyA", schema, recordA, 0)
+    );
+    topicPartitionWriter.buffer(
+        new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, "keyB", schema, recordB, 1)
+    );
+
+    topicPartitionWriter.write();
+    topicPartitionWriter.close();
+
+    assertEquals(
+        "Existing writers should be flushed before opening a new partition writer",
+        1,
+        trackingWriterProvider.commitCount()
+    );
+    Mockito.verify(mockContext, Mockito.atLeast(2)).pause(TOPIC_PARTITION);
+    Mockito.verify(mockContext, Mockito.atLeastOnce()).resume(TOPIC_PARTITION);
+  }
+
+  @Test
+  public void testMaxConcurrentPartitionWriterDoesNotFlushWhenWithinLimit() throws Exception {
+    localProps.put(S3SinkConnectorConfig.FLUSH_SIZE_CONFIG, "1000");
+    localProps.put(S3SinkConnectorConfig.MAX_CONCURRENT_PARTITION_WRITER_CONFIG, "2");
+    setUp();
+
+    Partitioner<?> partitioner = new FieldPartitioner<>();
+    String field = "field";
+    parsedConfig.put(PARTITION_FIELD_NAME_CONFIG, Collections.singletonList(field));
+    partitioner.configure(parsedConfig);
+
+    TrackingRecordWriterProvider trackingWriterProvider = new TrackingRecordWriterProvider();
+    TopicPartitionWriter topicPartitionWriter = new TopicPartitionWriter(
+        TOPIC_PARTITION, storage, trackingWriterProvider, partitioner, connectorConfig, context, null
+    );
+
+    Schema schema = SchemaBuilder.struct().field(field, Schema.STRING_SCHEMA).build();
+    Struct recordA = new Struct(schema).put(field, "a");
+    Struct recordB = new Struct(schema).put(field, "b");
+    topicPartitionWriter.buffer(
+        new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, "keyA", schema, recordA, 0)
+    );
+    topicPartitionWriter.buffer(
+        new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, "keyB", schema, recordB, 1)
+    );
+
+    topicPartitionWriter.write();
+    topicPartitionWriter.close();
+
+    assertEquals(
+        "Writers should not be flushed early when the limit is not exceeded",
+        0,
+        trackingWriterProvider.commitCount()
+    );
+  }
+
+  @Test
+  public void testMaxConcurrentPartitionWriterUnlimitedDoesNotFlush() throws Exception {
+    localProps.put(S3SinkConnectorConfig.FLUSH_SIZE_CONFIG, "1000");
+    localProps.put(S3SinkConnectorConfig.MAX_CONCURRENT_PARTITION_WRITER_CONFIG, "0");
+    setUp();
+
+    Partitioner<?> partitioner = new FieldPartitioner<>();
+    String field = "field";
+    parsedConfig.put(PARTITION_FIELD_NAME_CONFIG, Collections.singletonList(field));
+    partitioner.configure(parsedConfig);
+
+    SinkTaskContext mockContext = mock(SinkTaskContext.class);
+    TrackingRecordWriterProvider trackingWriterProvider = new TrackingRecordWriterProvider();
+    TopicPartitionWriter topicPartitionWriter = new TopicPartitionWriter(
+        TOPIC_PARTITION, storage, trackingWriterProvider, partitioner, connectorConfig, mockContext, null
+    );
+
+    Schema schema = SchemaBuilder.struct().field(field, Schema.STRING_SCHEMA).build();
+    Struct recordA = new Struct(schema).put(field, "a");
+    Struct recordB = new Struct(schema).put(field, "b");
+    Struct recordC = new Struct(schema).put(field, "c");
+    topicPartitionWriter.buffer(
+        new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, "keyA", schema, recordA, 0)
+    );
+    topicPartitionWriter.buffer(
+        new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, "keyB", schema, recordB, 1)
+    );
+    topicPartitionWriter.buffer(
+        new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, "keyC", schema, recordC, 2)
+    );
+
+    topicPartitionWriter.write();
+    topicPartitionWriter.close();
+
+    assertEquals(
+        "Unlimited concurrent partition writers should not trigger flushes",
+        0,
+        trackingWriterProvider.commitCount()
+    );
+  }
+
   private List<Object> generateTestDataWithSchema(
       Partitioner<?> partitioner, S3SinkConnectorConfig.AffixType affixType
   ) {
@@ -2396,6 +2513,48 @@ public class TopicPartitionWriterTest extends TestWithMockedS3 {
     // Invoke write so as to simulate tagging error.
     topicPartitionWriter.write();
     topicPartitionWriter.close();
+  }
+
+  private static class TrackingRecordWriterProvider
+      implements RecordWriterProvider<S3SinkConnectorConfig> {
+    private final AtomicInteger commitCount = new AtomicInteger();
+
+    @Override
+    public RecordWriter getRecordWriter(S3SinkConnectorConfig config, String filename) {
+      return new TrackingRecordWriter(commitCount);
+    }
+
+    @Override
+    public String getExtension() {
+      return ".tracking";
+    }
+
+    int commitCount() {
+      return commitCount.get();
+    }
+  }
+
+  private static class TrackingRecordWriter implements RecordWriter {
+    private final AtomicInteger commitCount;
+
+    TrackingRecordWriter(AtomicInteger commitCount) {
+      this.commitCount = commitCount;
+    }
+
+    @Override
+    public void write(SinkRecord record) {
+      // no-op
+    }
+
+    @Override
+    public void commit() {
+      commitCount.incrementAndGet();
+    }
+
+    @Override
+    public void close() {
+      // no-op
+    }
   }
 
   public static class MockedWallclockTimestampExtractor implements TimestampExtractor {

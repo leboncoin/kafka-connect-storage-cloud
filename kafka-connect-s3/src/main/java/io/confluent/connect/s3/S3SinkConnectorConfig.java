@@ -206,6 +206,14 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
       + "being revoked from the group. It also mitigates (but does not eliminate) the risk of "
       + "a zombie task to continue writing to S3 after it has been revoked.";
 
+  public static final String MAX_CONCURRENT_PARTITION_WRITER_CONFIG =
+      "max.concurrent.partition.writer";
+  public static final int MAX_CONCURRENT_PARTITION_WRITER_DEFAULT = Integer.MAX_VALUE;
+  public static final String MAX_CONCURRENT_PARTITION_WRITER_DOC =
+      "The maximum number of S3 partition writers that may be open for a single Kafka partition at "
+          + "a time. When the limit is reached, the task pauses consumption and flushes existing "
+          + "writers before continuing.";
+
   /**
    * Maximum back-off time when retrying failed requests.
    */
@@ -761,6 +769,19 @@ public class S3SinkConnectorConfig extends StorageSinkConnectorConfig {
           ++orderInGroup,
           Width.SHORT,
           "Maximum write duration"
+      );
+
+      configDef.define(
+          MAX_CONCURRENT_PARTITION_WRITER_CONFIG,
+          Type.INT,
+          MAX_CONCURRENT_PARTITION_WRITER_DEFAULT,
+          atLeast(0),
+          Importance.MEDIUM,
+          MAX_CONCURRENT_PARTITION_WRITER_DOC,
+          group,
+          ++orderInGroup,
+          Width.SHORT,
+          "Max Concurrent Partition Writers"
       );
 
       // This is done to avoid aggressive schema based rotations resulting out of interleaving

@@ -85,6 +85,7 @@ public class TopicPartitionWriter {
   private final boolean ignoreTaggingErrors;
   private int recordCount;
   private final int flushSize;
+  private final int maxConcurrentPartitionWriters;
   private final long rotateIntervalMs;
   private final long rotateScheduleIntervalMs;
   private long nextScheduledRotation;
@@ -161,6 +162,9 @@ public class TopicPartitionWriter {
             S3SinkConnectorConfig.S3_OBJECT_BEHAVIOR_ON_TAGGING_ERROR_CONFIG)
         .equalsIgnoreCase(S3SinkConnectorConfig.IgnoreOrFailBehavior.IGNORE.toString());
     flushSize = connectorConfig.getInt(S3SinkConnectorConfig.FLUSH_SIZE_CONFIG);
+    maxConcurrentPartitionWriters = connectorConfig.getInt(
+        S3SinkConnectorConfig.MAX_CONCURRENT_PARTITION_WRITER_CONFIG
+    );
     topicsDir = connectorConfig.getString(StorageCommonConfig.TOPICS_DIR_CONFIG);
     rotateIntervalMs = connectorConfig.getLong(S3SinkConnectorConfig.ROTATE_INTERVAL_MS_CONFIG);
     if (rotateIntervalMs > 0 && timestampExtractor == null) {
@@ -404,6 +408,9 @@ public class TopicPartitionWriter {
     }
 
     SinkRecord projectedRecord = compatibility.project(record, null, currentValueSchema);
+    if (!writers.containsKey(encodedPartition)) {
+      ensureWriterCapacity(encodedPartition);
+    }
     boolean validRecord = writeRecord(projectedRecord, encodedPartition, record);
     buffer.poll();
     if (!validRecord) {
@@ -602,6 +609,26 @@ public class TopicPartitionWriter {
     log.trace("Resuming writer for topic-partition '{}'", tp);
     context.resume(tp);
     isPaused = false;
+  }
+
+  private void ensureWriterCapacity(String encodedPartition) {
+    if (maxConcurrentPartitionWriters <= 0) {
+      return;
+    }
+    if (writers.size() < maxConcurrentPartitionWriters) {
+      return;
+    }
+    log.info(
+        "Maximum number of concurrent partition writers ({}) reached for {}. "
+            + "Pausing consumption and flushing existing writers before continuing with '{}'.",
+        maxConcurrentPartitionWriters,
+        tp,
+        encodedPartition
+    );
+    pause();
+    if (!commitFiles.isEmpty()) {
+      commitFiles();
+    }
   }
 
   private RecordWriter newWriter(SinkRecord record, String encodedPartition)
