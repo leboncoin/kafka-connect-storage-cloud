@@ -158,11 +158,11 @@ public class S3SinkConnectorConfigTest extends S3SinkConnectorTestBase {
   public void testFilenameFormatValidatorAcceptsAllowedPlaceholders() {
     properties.put(
         S3_OBJECT_FILENAME_FORMAT_CONFIG,
-        "custom${fileDelim}${topic}${fileDelim}${randomId}"
+        "custom${fileDelim}${topic}${fileDelim}${randomUuid}"
     );
     connectorConfig = new S3SinkConnectorConfig(properties);
     assertEquals(
-        "custom${fileDelim}${topic}${fileDelim}${randomId}",
+        "custom${fileDelim}${topic}${fileDelim}${randomUuid}",
         connectorConfig.getString(S3_OBJECT_FILENAME_FORMAT_CONFIG)
     );
   }
